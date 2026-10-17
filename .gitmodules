@@ -1,0 +1,21 @@
+[submodule "apps/filmcraft"]
+	path = apps/filmcraft
+	url = https://github.com/storytold/filmcraft
+[submodule "apps/soundcraft"]
+	path = apps/soundcraft
+	url = https://github.com/storytold/soundcraft
+[submodule "apps/effectcraft"]
+	path = apps/effectcraft
+	url = https://github.com/storytold/effectcraft
+[submodule "apps/vectorcraft"]
+	path = apps/vectorcraft
+	url = https://github.com/storytold/vectorcraft
+[submodule "apps/photocraft"]
+	path = apps/photocraft
+	url = https://github.com/storytold/photocraft
+[submodule "apps/lightcraft"]
+	path = apps/lightcraft
+	url = https://github.com/storytold/lightcraft
+[submodule "apps/designcraft"]
+	path = apps/designcraft
+	url = https://github.com/storytold/designcraft

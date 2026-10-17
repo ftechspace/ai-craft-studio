@@ -1,0 +1,26 @@
+CWWAC — a content-creation workflow for the ArtCraft apps
+Copyright 2026 ftechspace
+
+This repository contains the workflow layer only: Claude Code agents and skills, operating manuals, small
+tools and a patch. It is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The applications in apps/ are NOT part of this work. They are git submodules pointing at the ArtCraft team's own
+repositories (https://github.com/storytold), each under its own licence (MIT OR Apache-2.0 / Apache-2.0 — see the
+LICENSE files inside each app):
+
+  FilmCraft    https://github.com/storytold/filmcraft
+  SoundCraft   https://github.com/storytold/soundcraft
+  EffectCraft  https://github.com/storytold/effectcraft
+  VectorCraft  https://github.com/storytold/vectorcraft
+  PhotoCraft   https://github.com/storytold/photocraft
+  LightCraft   https://github.com/storytold/lightcraft
+  DesignCraft  https://github.com/storytold/designcraft
+
+"ArtCraft" and the app names and logos are trademarks of the ArtCraft Team. This project is independent and is not
+affiliated with or endorsed by the ArtCraft Team.
+
+patches/filmcraft-studio.patch modifies FilmCraft (adds the `contact` example and the `autoedit` command); it is
+offered under FilmCraft's own licence terms.
+
+Optional voice engines downloaded by tools/tts (Kokoro, Piper, Chatterbox) and their models are third-party software
+under their own licences; they are not included in this repository.

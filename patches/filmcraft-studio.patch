@@ -1,0 +1,645 @@
+diff --git a/apps/filmcraft-cli/Cargo.toml b/apps/filmcraft-cli/Cargo.toml
+index 218b7f7d..0568ea0a 100644
+--- a/apps/filmcraft-cli/Cargo.toml
++++ b/apps/filmcraft-cli/Cargo.toml
+@@ -33,6 +33,11 @@ filmcraft-ogg = { workspace = true }
+ filmcraft-automation = { workspace = true }
+ serde_json = { workspace = true }
+ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
++# autoedit: Claude API over HTTPS (pure-Rust TLS, as in filmcraft-speech) and JPEG thumbnails
++ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
++rustls-rustcrypto = "0.0.2-alpha"
++base64 = "0.22"
++image = { version = "0.25", default-features = false, features = ["jpeg"] }
+ 
+ [dev-dependencies]
+ filmcraft-testkit = { workspace = true }
+diff --git a/apps/filmcraft-cli/examples/contact.rs b/apps/filmcraft-cli/examples/contact.rs
+new file mode 100644
+index 00000000..8b6214de
+--- /dev/null
++++ b/apps/filmcraft-cli/examples/contact.rs
+@@ -0,0 +1,116 @@
++//! Contact sheets and levels for looking at footage (used by the film-editor agent). JPEG grids, 5 columns,
++//! row-major, 384×216 cells. `<out>` is a directory, or a `.jpg` path for the range/program modes.
++//!
++//! `contact <out> <max_frames> <file>...`               one sheet per clip, frames spread evenly (≥1 per 2 s)
++//! `contact <out> range <file> <from> <to> <step>`      one sheet of a source range (seconds), up to 60 frames
++//! `contact <out> program <project.fcproj> <seconds>...` the project's active sequence at those times
++//! `contact <out.png> frame <file> <seconds>`           one full-resolution frame of a clip (PNG/JPEG by extension)
++//!
++//! Prints one JSON line per sheet: the sheet path, the times, and per-frame levels — luma percentiles
++//! (2/50/98 %, Rec.709, 0–100) and mean RGB (0–255) — a numeric stand-in for the waveform.
++
++use filmcraft_engine::Session;
++use filmcraft_time::Tick;
++use serde_json::{Value, json};
++
++const TPS: f64 = 254_016_000_000.0;
++const CW: u32 = 384;
++const CH: u32 = 216;
++const COLS: u32 = 5;
++
++type Res<T> = Result<T, Box<dyn std::error::Error>>;
++
++fn main() -> Res<()> {
++    let a: Vec<String> = std::env::args().skip(1).collect();
++    let usage = "usage: contact <out> <max_frames> <file>... | contact <out> range <file> <from> <to> <step> | contact <out> program <project.fcproj> <seconds>... | contact <out.png> frame <file> <seconds>";
++    let (Some(out), Some(mode), Some(arg)) = (a.first(), a.get(1), a.get(2)) else { return Err(usage.into()) };
++    let num = |i: usize| -> Res<f64> { Ok(a.get(i).ok_or(usage)?.parse::<f64>()?) };
++    let sheet_path = |name: &str| if out.ends_with(".jpg") { out.clone() } else { format!("{out}/{name}.jpg") };
++    let mut s = Session::default();
++    match mode.as_str() {
++        "program" => {
++            s.execute("file.open", json!({"path": arg}))?;
++            let times = a.get(3..).unwrap_or_default().iter().map(|t| t.parse()).collect::<Result<Vec<f64>, _>>()?;
++            sheet(&s, &times, &sheet_path("program"))?;
++        }
++        "frame" => {
++            open_clip(&mut s, arg)?;
++            let fr = s.try_render_program_at(1.0, Tick((num(3)? * TPS) as i64))?;
++            let rgb: Vec<u8> = fr.over_black_rgba8().as_chunks::<4>().0.iter().flat_map(|&[r, g, b, _]| [r, g, b]).collect();
++            image::RgbImage::from_raw(fr.w as u32, fr.h as u32, rgb).ok_or("frame")?.save(out)?;
++            println!("{}", json!({"frame": out, "w": fr.w, "h": fr.h}));
++        }
++        "range" => {
++            let (from, to, step) = (num(3)?, num(4)?, num(5)?.max(0.05));
++            let n = (((to - from) / step).floor() as usize + 1).clamp(1, 60);
++            open_clip(&mut s, arg)?;
++            let times: Vec<f64> = (0..n).map(|i| from + i as f64 * step).collect();
++            sheet(&s, &times, &sheet_path(&format!("{}_{from}-{to}", stem(arg))))?;
++        }
++        _ => {
++            let max: usize = mode.parse()?;
++            for f in a.get(2..).unwrap_or_default() {
++                let dur = open_clip(&mut s, f)?;
++                let n = max.min(((dur / 2.0) as usize).max(1));
++                let times: Vec<f64> = (0..n).map(|i| dur * (i as f64 + 0.5) / n as f64).collect();
++                sheet(&s, &times, &format!("{out}/{}.jpg", stem(f)))?;
++            }
++        }
++    }
++    Ok(())
++}
++
++fn stem(f: &str) -> String {
++    std::path::Path::new(f).file_stem().and_then(|x| x.to_str()).unwrap_or("clip").to_string()
++}
++
++/// Import a clip into a sequence of its own (placed whole at 0, so sequence time = source time); its length in seconds.
++fn open_clip(s: &mut Session, f: &str) -> Res<f64> {
++    let item = s.execute("file.import", json!({"paths": [f]}))?["items"][0].as_u64().ok_or("import failed")?;
++    s.execute("file.newSequence", json!({"name": stem(f), "fromItem": item}))?;
++    Ok(s.execute("sequence.inspect", json!({}))?["duration"].as_f64().ok_or("no duration")? / TPS)
++}
++
++/// Render the active sequence at `times` into one sheet; print path, times and levels.
++fn sheet(s: &Session, times: &[f64], path: &str) -> Res<()> {
++    let rows = (times.len() as u32).div_ceil(COLS).max(1);
++    let mut img = image::RgbImage::new(CW * COLS.min(times.len().max(1) as u32), CH * rows);
++    let mut levels = Vec::new();
++    for (i, t) in times.iter().enumerate() {
++        let fr = s.try_render_program_at(CW as f32 / 1920.0, Tick((t * TPS) as i64))?;
++        let rgb: Vec<u8> = fr.over_black_rgba8().as_chunks::<4>().0.iter().flat_map(|&[r, g, b, _]| [r, g, b]).collect();
++        levels.push(measure(&rgb));
++        let cell = image::RgbImage::from_raw(fr.w as u32, fr.h as u32, rgb).ok_or("frame")?;
++        let cell = image::imageops::resize(&cell, CW, CH, image::imageops::FilterType::Triangle);
++        image::imageops::overlay(&mut img, &cell, (i as u32 % COLS * CW) as i64, (i as u32 / COLS * CH) as i64);
++    }
++    img.save(path)?;
++    let times: Vec<f64> = times.iter().map(|t| (t * 100.0).round() / 100.0).collect();
++    println!("{}", json!({"sheet": path, "times": times, "levels": levels}));
++    Ok(())
++}
++
++/// Luma percentiles (Rec.709, %) and mean RGB of an 8-bit RGB frame.
++fn measure(rgb: &[u8]) -> Value {
++    let px = rgb.as_chunks::<3>().0;
++    let mut hist = [0u64; 256];
++    let mut sum = [0f64; 3];
++    for &[r, g, b] in px {
++        let y = 0.2126 * r as f64 + 0.7152 * g as f64 + 0.0722 * b as f64;
++        hist[(y.round() as usize).min(255)] += 1;
++        sum[0] += r as f64;
++        sum[1] += g as f64;
++        sum[2] += b as f64;
++    }
++    let n = px.len().max(1) as f64;
++    let pct = |p: f64| {
++        let mut acc = 0u64;
++        let target = (p * n) as u64;
++        let v = hist.iter().position(|&h| {
++            acc += h;
++            acc > target
++        });
++        (v.unwrap_or(255) as f64 / 2.55).round()
++    };
++    json!({"y2": pct(0.02), "y50": pct(0.5), "y98": pct(0.98), "rgb": sum.map(|c| (c / n).round())})
++}
+diff --git a/apps/filmcraft-cli/src/args.rs b/apps/filmcraft-cli/src/args.rs
+index ef418766..ec3e8e1e 100644
+--- a/apps/filmcraft-cli/src/args.rs
++++ b/apps/filmcraft-cli/src/args.rs
+@@ -20,6 +20,9 @@ const VALUED: &[&str] = &[
+     "--data-dir",
+     "--settings",
+     "--gpu-rendering",
++    "--brief",
++    "--music",
++    "--plan",
+ ];
+ 
+ #[derive(Debug, Default)]
+diff --git a/apps/filmcraft-cli/src/autoedit.rs b/apps/filmcraft-cli/src/autoedit.rs
+new file mode 100644
+index 00000000..d8795385
+--- /dev/null
++++ b/apps/filmcraft-cli/src/autoedit.rs
+@@ -0,0 +1,440 @@
++//! `autoedit`: footage in, finished film out.
++//!
++//! The footage is laid end to end on an "All footage" sequence and split into shots with Scene Edit
++//! Detection. Claude looks at one frame per shot and answers with an edit plan (JSON, saved next to
++//! the output so it can be tweaked and re-run with `--plan`). The engine then cuts the film with the
++//! same commands as the UI: shots, transitions, a Lumetri look, a title, music remixed to length and
++//! ducked under the footage's sound, fades, and a -14 LUFS export. The project is saved beside the
++//! film for finishing in the app.
++
++use base64::Engine as _;
++use filmcraft_engine::Session;
++use filmcraft_time::{TICKS_PER_SECOND, Tick};
++use serde_json::{Value, json};
++
++const MODEL: &str = "claude-opus-5-5";
++/// The Messages API takes at most 100 images per request.
++const MAX_SHOTS: usize = 90;
++/// Thumbnail width sent to Claude.
++const THUMB_W: f64 = 512.0;
++/// Shorter than this isn't a usable shot.
++const MIN_SHOT: i64 = TICKS_PER_SECOND / 2;
++/// Lumetri `look` choices, by index.
++const LOOKS: [&str; 9] = ["none", "teal-orange", "warm-film", "cool-blue", "bleach-bypass", "faded-matte", "monochrome", "golden-hour", "night"];
++const TRANSITIONS: [&str; 5] = ["cut", "cross_dissolve", "dip_to_black", "dip_to_white", "film_dissolve"];
++
++pub struct Options {
++    pub footage: Vec<String>,
++    pub out: String,
++    pub brief: String,
++    pub music: Option<String>,
++    pub seconds: Option<f64>,
++    pub plan: Option<String>,
++}
++
++/// One detected shot: a media range of an imported item, and where it sits on "All footage".
++#[derive(Clone, Debug, PartialEq)]
++struct Shot {
++    item: u64,
++    name: String,
++    src_in: i64,
++    len: i64,
++    seq_at: i64,
++}
++
++fn ex(s: &mut Session, id: &str, p: Value) -> Result<Value, String> {
++    s.execute(id, p).map_err(|e| format!("{id}: {e}"))
++}
++
++/// Finishing touches (fades, styling) warn instead of failing the film.
++fn soft(s: &mut Session, id: &str, p: Value) -> Option<Value> {
++    ex(s, id, p).map_err(|e| eprintln!("autoedit: warning: {e}")).ok()
++}
++
++fn ids(v: &Value) -> Vec<u64> {
++    v.as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default()
++}
++
++pub fn run(o: &Options) -> Result<(), String> {
++    let mut s = Session::default();
++    let mut paths = expand(&o.footage)?;
++    let music = o.music.as_ref().map(|m| std::fs::canonicalize(m).map_err(|e| format!("{m}: {e}"))).transpose()?.map(|m| m.to_string_lossy().into_owned());
++    paths.retain(|p| Some(p) != music.as_ref()); // the music may sit in the footage folder
++    if paths.is_empty() {
++        return Err("no footage besides the music".into());
++    }
++    eprintln!("autoedit: importing {} file(s)", paths.len());
++    let r = ex(&mut s, "file.import", json!({"paths": paths}))?;
++    for e in r["errors"].as_array().into_iter().flatten() {
++        eprintln!("autoedit: skipped {e}");
++    }
++    let items = ids(&r["items"]);
++    let first = *items.first().ok_or("nothing imported")?;
++
++    // All footage, end to end, then shots from Scene Edit Detection.
++    ex(&mut s, "file.newSequence", json!({"name": "All footage", "fromItem": first}))?;
++    for &item in items.get(1..).unwrap_or_default() {
++        let end = ex(&mut s, "sequence.inspect", json!({}))?["duration"].as_i64().unwrap_or(0);
++        if let Err(e) = ex(&mut s, "timeline.place", json!({"item": item, "track": "V1", "time": end, "audio": false})) {
++            eprintln!("autoedit: skipped item {item}: {e}");
++        }
++    }
++    let seq = ex(&mut s, "sequence.inspect", json!({}))?;
++    let placed: Vec<Value> = seq["video"][0]["items"].as_array().cloned().unwrap_or_default();
++    let clips: Vec<u64> = placed.iter().filter_map(|c| c["clip"].as_u64()).collect();
++    eprintln!("autoedit: detecting shots in {} clip(s)", clips.len());
++    let det = ex(&mut s, "clip.sceneEditDetection", json!({"clips": clips, "applyCuts": false, "generateMarkers": true, "wait": true}))?;
++    let mut shots = shots_from(&placed, &det["clips"]);
++    if shots.len() > MAX_SHOTS {
++        // ponytail: keeps the longest shots; sample several frames per request batch if this drops good material
++        shots.sort_by_key(|x| std::cmp::Reverse(x.len));
++        shots.truncate(MAX_SHOTS);
++        shots.sort_by_key(|x| x.seq_at);
++    }
++    if shots.is_empty() {
++        return Err("no usable shots (at least half a second of video)".into());
++    }
++    eprintln!("autoedit: {} shots", shots.len());
++
++    let set = &seq["settings"];
++    let (w, h) = (set["width"].as_u64().unwrap_or(1920), set["height"].as_u64().unwrap_or(1080));
++    let (num, den) = (set["frame_rate"]["num"].as_i64().unwrap_or(0), set["frame_rate"]["den"].as_i64().unwrap_or(0));
++    if num <= 0 || den <= 0 {
++        return Err("footage has no frame rate".into());
++    }
++    let fps = num as f64 / den as f64;
++
++    let plan_path = o.plan.clone().unwrap_or_else(|| format!("{}.plan.json", o.out));
++    let plan: Value = match &o.plan {
++        Some(p) => serde_json::from_str(&std::fs::read_to_string(p).map_err(|e| format!("{p}: {e}"))?).map_err(|e| format!("{p}: {e}"))?,
++        None => {
++            let thumbs = thumbnails(&s, &shots, w)?;
++            eprintln!("autoedit: asking {MODEL} for an edit");
++            let plan = ask_claude(&prompt(o, &shots, &thumbs))?;
++            std::fs::write(&plan_path, serde_json::to_string_pretty(&plan).unwrap_or_default()).map_err(|e| format!("{plan_path}: {e}"))?;
++            plan
++        }
++    };
++    if let Some(n) = plan["notes"].as_str() {
++        eprintln!("autoedit: editor's notes: {n}");
++    }
++
++    // The film.
++    let title = plan["title"].as_str().unwrap_or("").trim().to_string();
++    let name = if title.is_empty() { "AI Edit".to_string() } else { title.clone() };
++    ex(&mut s, "file.newSequence", json!({"name": name, "width": w, "height": h, "fps": fps}))?;
++    let frames = |secs: f64| (secs * fps).round().max(1.0) as i64;
++    let ticks = |f: i64| (f as i128 * TICKS_PER_SECOND as i128 * den as i128 / num as i128) as i64;
++    let source_audio = plan["source_audio"].as_str().unwrap_or("under");
++    let mut t = 0i64;
++    let mut cuts: Vec<(u64, Option<u64>, i64, &str)> = Vec::new(); // video clip, audio clip, frames, transition in
++    for c in plan["shots"].as_array().into_iter().flatten() {
++        let Some(shot) = c["shot"].as_u64().and_then(|i| shots.get(i as usize)) else {
++            eprintln!("autoedit: plan names a shot that doesn't exist: {c}");
++            continue;
++        };
++        let (start, len) = fit(c["start"].as_f64().unwrap_or(0.0), c["seconds"].as_f64().unwrap_or(3.0), shot.len);
++        let n = frames(len as f64 / TICKS_PER_SECOND as f64);
++        let r = ex(
++            &mut s,
++            "timeline.place",
++            json!({"item": shot.item, "track": "V1", "time": t, "sourceIn": shot.src_in + start, "duration": ticks(n), "audio": source_audio != "off"}),
++        )?;
++        let placed = ids(&r["clips"]);
++        let Some(&v) = placed.first() else { continue };
++        let tr = c["transition"].as_str().filter(|x| TRANSITIONS.contains(x)).unwrap_or("cut");
++        cuts.push((v, placed.get(1).copied(), n, tr));
++        t += ticks(n);
++    }
++    if cuts.is_empty() {
++        return Err("the plan placed no shots".into());
++    }
++    let film_secs = t as f64 / TICKS_PER_SECOND as f64;
++    eprintln!("autoedit: cut {} shots, {film_secs:.1}s", cuts.len());
++
++    // Transitions: the plan's at each cut (at most a third of the shorter side), fades at the ends.
++    for pair in cuts.windows(2) {
++        let [a, b] = pair else { continue };
++        let len = (b.2.min(a.2) / 3).min(frames(0.8)).max(2);
++        if b.3 != "cut" {
++            soft(&mut s, "sequence.applyVideoTransition", json!({"clip": b.0, "effect": b.3, "frames": len, "edge": "in"}));
++        }
++        if let Some(au) = b.1 {
++            let fade = if b.3 == "cut" { frames(0.15).min(len) } else { len };
++            soft(&mut s, "sequence.applyAudioTransition", json!({"clip": au, "frames": fade}));
++        }
++    }
++    if let (Some(f), Some(l)) = (cuts.first(), cuts.last()) {
++        soft(&mut s, "sequence.applyVideoTransition", json!({"clip": f.0, "effect": "dip_to_black", "frames": frames(1.0).min(f.2 / 2).max(1), "edge": "in"}));
++        soft(&mut s, "sequence.applyVideoTransition", json!({"clip": l.0, "effect": "dip_to_black", "frames": frames(1.5).min(l.2 / 2).max(1), "edge": "out"}));
++    }
++
++    // Look.
++    let videos: Vec<u64> = cuts.iter().map(|c| c.0).collect();
++    let look = plan["look"].as_str().and_then(|l| LOOKS.iter().position(|x| *x == l)).unwrap_or(0);
++    if look > 0 && soft(&mut s, "effects.apply", json!({"clips": videos, "effect": "lumetri"})).is_some() {
++        let intensity = plan["look_intensity"].as_f64().unwrap_or(100.0).clamp(0.0, 200.0);
++        for &v in &videos {
++            soft(&mut s, "effects.setParam", json!({"clip": v, "effect": "lumetri", "param": "look", "value": look}));
++            soft(&mut s, "effects.setParam", json!({"clip": v, "effect": "lumetri", "param": "look_intensity", "value": intensity}));
++        }
++    }
++
++    // Sound: the footage's own, then music under it.
++    let audios: Vec<u64> = cuts.iter().filter_map(|c| c.1).collect();
++    if source_audio == "under" && !audios.is_empty() {
++        soft(&mut s, "clip.audioGain", json!({"clips": audios, "mode": "set", "db": -12.0}));
++    }
++    if let Some(m) = &music {
++        let item = *ids(&ex(&mut s, "file.import", json!({"paths": [m]}))?["items"]).first().ok_or("music didn't import")?;
++        // never longer than the film or the track itself (place doesn't stop at the end of the media)
++        let len = item_duration(&mut s, item)?.min(t);
++        let mc = *ids(&ex(&mut s, "timeline.place", json!({"item": item, "track": "A2", "time": 0, "duration": len}))?["clips"])
++            .first()
++            .ok_or("music didn't place")?;
++        if len != t
++            && let Err(e) = ex(&mut s, "clip.remix", json!({"clip": mc, "duration": t}))
++        {
++            eprintln!("autoedit: music not remixed to the film's length, it is cut instead ({e})");
++        }
++        soft(&mut s, "sequence.applyAudioTransition", json!({"clip": mc, "frames": frames(0.5), "edge": "in"}));
++        soft(&mut s, "sequence.applyAudioTransition", json!({"clip": mc, "frames": frames(2.0), "edge": "out"}));
++        soft(&mut s, "essentialSound.setType", json!({"clips": [mc], "type": "music"}));
++        if !audios.is_empty() {
++            soft(&mut s, "essentialSound.setType", json!({"clips": audios, "type": "dialogue"}));
++            soft(&mut s, "essentialSound.generateDucking", json!({"clips": [mc]}));
++        }
++    }
++
++    // Title over the opening.
++    if !title.is_empty() {
++        let secs = (film_secs * 0.4).min(4.0);
++        if let Some(r) = soft(&mut s, "graphics.newText", json!({"text": title, "size": h / 10, "seconds": secs, "time": ticks(frames(0.5))}))
++            && let Some(c) = r["clip"].as_u64()
++        {
++            soft(&mut s, "graphics.set", json!({"clip": c, "props": {"shadow": true, "align": "center"}}));
++            for edge in ["in", "out"] {
++                soft(&mut s, "sequence.applyVideoTransition", json!({"clip": c, "effect": "cross_dissolve", "frames": frames(0.6), "edge": edge}));
++            }
++        }
++    }
++
++    let project = format!("{}.fcproj", o.out.rsplit_once('.').map_or(o.out.as_str(), |(stem, _)| stem));
++    ex(&mut s, "file.saveAs", json!({"path": project}))?;
++    eprintln!("autoedit: exporting {}", o.out);
++    let format = crate::format_for(&o.out).unwrap_or("h264");
++    ex(
++        &mut s,
++        "file.exportMedia",
++        json!({"path": o.out, "format": format, "wait": true, "loudnessLufs": -14.0, "range": "custom", "startSeconds": 0.0, "endSeconds": film_secs}),
++    )?;
++    eprintln!("autoedit: done → {} (project {project}, plan {plan_path})", o.out);
++    Ok(())
++}
++
++/// Media length of a project item, in ticks.
++fn item_duration(s: &mut Session, item: u64) -> Result<i64, String> {
++    let tree = ex(s, "project.inspect", json!({}))?;
++    let mut stack = vec![&tree["root"]];
++    while let Some(n) = stack.pop() {
++        if n["item"].as_u64() == Some(item) {
++            return n["duration"].as_i64().filter(|d| *d > 0).ok_or_else(|| format!("item {item} has no duration"));
++        }
++        stack.extend(n["children"].as_array().into_iter().flatten());
++    }
++    Err(format!("item {item} not in the project"))
++}
++
++/// Files in the order given; a directory adds the files in it, sorted by name.
++fn expand(paths: &[String]) -> Result<Vec<String>, String> {
++    let mut out = Vec::new();
++    for p in paths {
++        let p = std::fs::canonicalize(p).map_err(|e| format!("{p}: {e}"))?;
++        if p.is_dir() {
++            let mut files: Vec<_> =
++                std::fs::read_dir(&p).map_err(|e| e.to_string())?.filter_map(|e| e.ok().map(|e| e.path())).filter(|f| f.is_file()).collect();
++            files.sort();
++            out.extend(files.iter().map(|f| f.to_string_lossy().into_owned()));
++        } else {
++            out.push(p.to_string_lossy().into_owned());
++        }
++    }
++    if out.is_empty() { Err("no footage given".into()) } else { Ok(out) }
++}
++
++/// Split each placed clip at its detected media cuts.
++fn shots_from(placed: &[Value], detected: &Value) -> Vec<Shot> {
++    let mut shots = Vec::new();
++    for c in placed {
++        let (Some(clip), Some(item)) = (c["clip"].as_u64(), c["item"].as_u64()) else { continue };
++        let (src_in, dur, start) = (c["sourceIn"].as_i64().unwrap_or(0), c["duration"].as_i64().unwrap_or(0), c["start"].as_i64().unwrap_or(0));
++        let src_out = src_in.saturating_add(dur);
++        let cuts = detected.as_array().into_iter().flatten().find(|d| d["clip"].as_u64() == Some(clip)).map(|d| ids(&d["mediaCuts"])).unwrap_or_default();
++        let mut bounds: Vec<i64> =
++            std::iter::once(src_in).chain(cuts.iter().map(|&x| x as i64).filter(|&x| x > src_in && x < src_out)).chain([src_out]).collect();
++        bounds.dedup();
++        for w in bounds.windows(2) {
++            if w[1] - w[0] >= MIN_SHOT {
++                let name = c["name"].as_str().unwrap_or("").to_string();
++                shots.push(Shot { item, name, src_in: w[0], len: w[1] - w[0], seq_at: start + (w[0] - src_in) });
++            }
++        }
++    }
++    shots
++}
++
++/// The plan's `start`/`seconds` inside a shot of `len` ticks: (offset, length) in ticks.
++fn fit(start: f64, seconds: f64, len: i64) -> (i64, i64) {
++    let tick = |s: f64| if s.is_finite() { Tick::from_seconds_f64(s.max(0.0)).0 } else { 0 };
++    let start = tick(start).min((len - MIN_SHOT).max(0));
++    (start, tick(seconds).clamp(MIN_SHOT.min(len - start), len - start))
++}
++
++/// One JPEG (base64) per shot, from the middle of the shot.
++fn thumbnails(s: &Session, shots: &[Shot], width: u64) -> Result<Vec<String>, String> {
++    let scale = (THUMB_W / width.max(1) as f64).min(1.0) as f32;
++    shots
++        .iter()
++        .map(|x| {
++            let img = s.try_render_program_at(scale, Tick(x.seq_at + x.len / 2)).map_err(|e| format!("thumbnail: {e}"))?;
++            let rgb: Vec<u8> = img.over_black_rgba8().as_chunks::<4>().0.iter().flat_map(|&[r, g, b, _]| [r, g, b]).collect();
++            let mut jpg = Vec::new();
++            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpg, 80)
++                .encode(&rgb, img.w as u32, img.h as u32, image::ExtendedColorType::Rgb8)
++                .map_err(|e| format!("thumbnail: {e}"))?;
++            Ok(base64::engine::general_purpose::STANDARD.encode(jpg))
++        })
++        .collect()
++}
++
++fn prompt(o: &Options, shots: &[Shot], thumbs: &[String]) -> Vec<Value> {
++    let length = match o.seconds {
++        Some(n) => format!("Make it about {n:.0} seconds long."),
++        None => "Choose the length the material deserves (usually 30–90 seconds); never pad with weak shots.".to_string(),
++    };
++    let music = if o.music.is_some() { "A music track will be laid under the cut and remixed to its length." } else { "There is no music track." };
++    let brief = if o.brief.is_empty() { "No brief: find the story or mood in the footage." } else { o.brief.as_str() };
++    let mut content = vec![json!({"type": "text", "text": format!(
++        "Brief: {brief}\n{length} {music}\nBelow is one frame from the middle of each shot, labelled with its index, source file and length."
++    )})];
++    for (i, (x, b64)) in shots.iter().zip(thumbs).enumerate() {
++        let text = format!("Shot {i}: {} at {:.1}s, {:.1}s long", x.name, x.src_in as f64 / TICKS_PER_SECOND as f64, x.len as f64 / TICKS_PER_SECOND as f64);
++        content.push(json!({"type": "text", "text": text}));
++        content.push(json!({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}));
++    }
++    content
++}
++
++const SYSTEM: &str = "You are a film editor cutting raw footage into a short, beautiful film. Pick the strongest shots, \
++order them so the film has a shape (an opening that draws the viewer in, a build, a resolution), trim each to its best \
++moment and let shots breathe or snap to match the mood. Use dissolves and dips sparingly and with intent; most edits \
++should be cuts. A shot may be used more than once only if it is long enough to give different moments. `start` and \
++`seconds` are in seconds within the shot. Pick one colour look (or none) that suits the footage, and a short title, \
++or an empty title when one would cheapen it. `source_audio`: `full` when the footage's own sound matters (speech, \
++performance), `under` for ambience under music, `off` to silence it.";
++
++fn plan_schema() -> Value {
++    json!({
++        "type": "object",
++        "additionalProperties": false,
++        "required": ["notes", "title", "look", "look_intensity", "source_audio", "shots"],
++        "properties": {
++            "notes": {"type": "string", "description": "Two or three sentences on the edit's idea and structure."},
++            "title": {"type": "string"},
++            "look": {"type": "string", "enum": LOOKS},
++            "look_intensity": {"type": "number", "description": "0 to 200; 100 is the look's full strength."},
++            "source_audio": {"type": "string", "enum": ["full", "under", "off"]},
++            "shots": {"type": "array", "items": {
++                "type": "object",
++                "additionalProperties": false,
++                "required": ["shot", "start", "seconds", "transition"],
++                "properties": {
++                    "shot": {"type": "integer"},
++                    "start": {"type": "number"},
++                    "seconds": {"type": "number"},
++                    "transition": {"type": "string", "enum": TRANSITIONS, "description": "How this shot comes in from the previous one."}
++                }
++            }}
++        }
++    })
++}
++
++fn ask_claude(content: &[Value]) -> Result<Value, String> {
++    let key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| "set ANTHROPIC_API_KEY (or pass --plan plan.json)")?;
++    let body = json!({
++        "model": MODEL,
++        "max_tokens": 16000,
++        "fallbacks": "default",
++        "output_config": {"effort": "high", "format": {"type": "json_schema", "schema": plan_schema()}},
++        "system": SYSTEM,
++        "messages": [{"role": "user", "content": content}],
++    });
++    let provider = std::sync::Arc::new(rustls_rustcrypto::provider());
++    let agent: ureq::Agent = ureq::Agent::config_builder()
++        .tls_config(
++            ureq::tls::TlsConfig::builder()
++                .provider(ureq::tls::TlsProvider::Rustls)
++                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
++                .unversioned_rustls_crypto_provider(provider)
++                .build(),
++        )
++        .timeout_connect(Some(std::time::Duration::from_secs(30)))
++        .http_status_as_error(false)
++        .build()
++        .into();
++    let mut resp = agent
++        .post("https://api.anthropic.com/v1/messages")
++        .header("x-api-key", &key)
++        .header("anthropic-version", "2023-06-01")
++        .header("anthropic-beta", "server-side-fallback-2026-07-01")
++        .header("content-type", "application/json")
++        .send(body.to_string())
++        .map_err(|e| format!("Claude API: {e}"))?;
++    let status = resp.status().as_u16();
++    let text = resp.body_mut().read_to_string().map_err(|e| format!("Claude API: {e}"))?;
++    let v: Value = serde_json::from_str(&text).map_err(|e| format!("Claude API ({status}): {e}: {text}"))?;
++    if status != 200 {
++        return Err(format!("Claude API ({status}): {}", v["error"]["message"].as_str().unwrap_or(&text)));
++    }
++    match v["stop_reason"].as_str() {
++        Some("refusal") => return Err(format!("Claude declined: {}", v["stop_details"])),
++        Some("max_tokens") => return Err("Claude's plan was cut off (max_tokens)".into()),
++        _ => {}
++    }
++    let out = v["content"]
++        .as_array()
++        .into_iter()
++        .flatten()
++        .filter(|b| b["type"] == "text")
++        .filter_map(|b| b["text"].as_str())
++        .next_back()
++        .ok_or("Claude returned no plan")?;
++    serde_json::from_str(out).map_err(|e| format!("Claude's plan isn't JSON: {e}"))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    const S: i64 = TICKS_PER_SECOND;
++
++    #[test]
++    fn shots_split_at_cuts_and_drop_slivers() {
++        let placed = [json!({"clip": 7, "item": 3, "name": "a.mp4", "sourceIn": 2 * S, "duration": 10 * S, "start": 5 * S})];
++        // cuts at 4 s and 4.2 s (sliver) and one outside the clip
++        let det = json!([{"clip": 7, "mediaCuts": [4 * S, 4 * S + S / 5, 20 * S]}]);
++        let shots = shots_from(&placed, &det);
++        let r: Vec<(i64, i64, i64)> = shots.iter().map(|x| (x.src_in, x.len, x.seq_at)).collect();
++        assert_eq!(r, [(2 * S, 2 * S, 5 * S), (4 * S + S / 5, 8 * S - S / 5, 7 * S + S / 5)]);
++        // no detection result: the whole clip is one shot
++        assert_eq!(shots_from(&placed, &json!(null)).len(), 1);
++    }
++
++    #[test]
++    fn plan_ranges_are_clamped_into_the_shot() {
++        assert_eq!(fit(1.0, 2.0, 10 * S), (S, 2 * S));
++        assert_eq!(fit(9.9, 5.0, 10 * S), (10 * S - MIN_SHOT, MIN_SHOT)); // starts too late, runs past the end
++        assert_eq!(fit(-3.0, 0.0, 10 * S), (0, MIN_SHOT)); // negative start, zero length
++        assert_eq!(fit(f64::NAN, f64::INFINITY, 10 * S), (0, MIN_SHOT));
++        assert_eq!(fit(0.0, 1.0, S / 4), (0, S / 4)); // shot shorter than MIN_SHOT
++    }
++}
+diff --git a/apps/filmcraft-cli/src/main.rs b/apps/filmcraft-cli/src/main.rs
+index d49652b3..60e73651 100644
+--- a/apps/filmcraft-cli/src/main.rs
++++ b/apps/filmcraft-cli/src/main.rs
+@@ -31,6 +31,7 @@ macro_rules! out {
+ }
+ 
+ mod args;
++mod autoedit;
+ mod probe;
+ 
+ use args::{Args, parse_value};
+@@ -95,6 +96,11 @@ SUBCOMMANDS
+                                 media info as JSON, with MXF / Ogg / BWF details; with
+                                 --image-sequence <media> is the first numbered still of a sequence
+   bench-decode <media> [--frames N]
++  autoedit <footage|dir>... --out film.mp4 [--brief text] [--music track] [--seconds n] [--plan p.json]
++                                cut a finished film from raw footage: Claude picks and orders the
++                                shots, transitions, look and title (needs ANTHROPIC_API_KEY); writes
++                                the film, its project (.fcproj) and the plan (<out>.plan.json, which
++                                --plan re-runs without asking Claude)
+   mcp                           MCP server on stdio (headless, or --bridge to the live app)
+   help                          this text
+   --version                     print the version
+@@ -478,6 +484,22 @@ async fn cli() {
+             check_offline(&a, &offline, &format!("render: {out}"));
+             diag(format_args!("rendered {}x{} in {:.1} ms → {out}", img.w, img.h, dt.as_secs_f64() * 1000.0));
+         }
++        "autoedit" => {
++            let o = autoedit::Options {
++                footage: a.positionals.get(1..).unwrap_or_default().to_vec(),
++                out: a.opt("--out").unwrap_or("film.mp4").to_string(),
++                brief: a.opt("--brief").unwrap_or("").to_string(),
++                music: a.opt("--music").map(str::to_string),
++                seconds: a.opt("--seconds").and_then(|v| v.parse().ok()),
++                plan: a.opt("--plan").map(str::to_string),
++            };
++            if o.footage.is_empty() {
++                usage("autoedit <footage|dir>... --out film.mp4 [--brief text] [--music track] [--seconds n] [--plan p.json]");
++            }
++            if let Err(e) = autoedit::run(&o) {
++                fail(format!("autoedit: {e}"));
++            }
++        }
+         "mcp" => {
+             if let Some(opt) = a.unknown_opt(&["--bridge", "--project", "--demo", "--data-dir"]) {
+                 usage(format!("unknown mcp option `{opt}`"));

@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "filmcraft": {
+      "command": "./apps/filmcraft/target/release/filmcraft-cli.exe",
+      "args": ["mcp", "--bridge", "127.0.0.1:9876"]
+    },
+    "soundcraft": {
+      "command": "./apps/soundcraft/target/release/soundcraft-cli.exe",
+      "args": ["mcp"]
+    },
+    "effectcraft": {
+      "command": "./apps/effectcraft/target/release/effectcraft-cli.exe",
+      "args": ["mcp", "--autosave"]
+    },
+    "vectorcraft": {
+      "command": "./apps/vectorcraft/target/release/vectorcraft-cli.exe",
+      "args": ["mcp", "--headless"]
+    },
+    "photocraft": {
+      "command": "./apps/photocraft/target/release/photocraft-cli.exe",
+      "args": ["mcp", "--automation-read-root", ".", "--automation-write-root", "./projects"]
+    },
+    "lightcraft": {
+      "command": "./apps/lightcraft/target/release/lightcraft-cli.exe",
+      "args": ["mcp", "--compact"]
+    },
+    "designcraft": {
+      "command": "./apps/designcraft/target/release/designcraft-cli.exe",
+      "args": ["mcp"]
+    }
+  }
+}

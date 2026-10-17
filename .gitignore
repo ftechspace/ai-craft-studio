@@ -1,0 +1,45 @@
+# --- Personal work: your projects, renders and media never go to git ---
+/projects/*
+!/projects/README.md
+/output/
+/test-footage/
+/sfx/
+
+# Reference videos are other people's copyrighted work: study locally, never publish.
+# Only the study instructions are shared.
+/references/*
+!/references/STUDY-BRIEF.md
+
+# Personal taste profile (the shared example is profile.example.md)
+/.claude/skills/taste-profile/profile.md
+
+# Claude Code local settings / session state
+/.claude/settings.local.json
+/.claude/todos/
+/.claude/scheduled_tasks.lock
+
+# Other tools' local folders
+/.qodo/
+/.vscode/
+/.idea/
+
+# Local voice engines: virtual envs, downloaded models and generated samples (~4 GB)
+/tools/tts/.venv/
+/tools/tts/.venv-*/
+/tools/tts/models/
+/tools/tts/samples/
+
+# App leftovers (the apps themselves are submodules; their build output stays inside them)
+*.exe.old-*
+Auto-Save/
+FilmCraft Previews/
+*.fcproj.bak
+
+# General
+__pycache__/
+*.pyc
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+._*
