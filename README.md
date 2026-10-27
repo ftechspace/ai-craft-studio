@@ -1,4 +1,4 @@
-# CWWAC — a creative studio of AI agents on the ArtCraft apps
+# ai-craft-studio — a creative studio of AI agents on the ArtCraft apps
 
 **Give it your footage and photos; get back a finished film, its music, titles, thumbnails and posters —
 made by a team of AI agents that drive real, open-source creative apps while you watch.**
@@ -80,8 +80,8 @@ output become the next app's input.
 [Claude Code](https://claude.com/claude-code). A GPU helps (FilmCraft and the optional voice cloning use it).
 
 ```sh
-git clone --recursive https://github.com/ftechspace/CWWAC.git
-cd CWWAC
+git clone --recursive https://github.com/ftechspace/ai-craft-studio.git
+cd ai-craft-studio
 sh setup.sh            # fetches the 8 apps, applies the FilmCraft patch, builds everything (~45 min)
 sh setup.sh --tts      # optional: also installs the local voice engines
 ```
