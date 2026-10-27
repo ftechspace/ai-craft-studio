@@ -10,7 +10,7 @@
 const net = require("net");
 const path = require("path");
 
-const PORTS = { photocraft: 9871, lightcraft: 9872, soundcraft: 9873, vectorcraft: 9874, effectcraft: 9875, filmcraft: 9876, designcraft: 9877 };
+const PORTS = { photocraft: 9871, lightcraft: 9872, soundcraft: 9873, vectorcraft: 9874, effectcraft: 9875, filmcraft: 9876, designcraft: 9877, figcraft: 9878 };
 const ROOT = path.join(__dirname, "..");
 const exe = (app, cli) => path.join(ROOT, "apps", app, "target", "release", `${app}${cli ? "-cli" : ""}.exe`);
 
@@ -27,7 +27,13 @@ const EXTRA = {
 
 function start(app, args = []) {
   const { spawn } = require("child_process");
-  spawn(exe(app), [...args, ...(EXTRA[app] || []), "--control", String(port(app))], { detached: true, stdio: "ignore", cwd: ROOT }).unref();
+  const fs = require("fs");
+  // keep the app's error output (panics + backtraces) so a crash leaves a reason: output/<app>-errors.log
+  fs.mkdirSync(path.join(ROOT, "output"), { recursive: true });
+  const err = fs.openSync(path.join(ROOT, "output", `${app}-errors.log`), "a");
+  fs.writeSync(err, `\n=== ${new Date().toISOString()} start ${app} ${args.join(" ")}\n`);
+  spawn(exe(app), [...args, ...(EXTRA[app] || []), "--control", String(port(app))],
+    { detached: true, stdio: ["ignore", "ignore", err], cwd: ROOT, env: { ...process.env, RUST_BACKTRACE: "1" } }).unref();
 }
 
 function connect(app) {

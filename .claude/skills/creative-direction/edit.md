@@ -2,8 +2,8 @@
 
 **This user's direction first** (from 26 reference videos — see `taste-profile`): intimate real-life storytelling.
 Pick one **story spine** (clock/light, condition arc, roll call + one chapter per person, countdown + "coming up",
-place chapters entered the same way, material spine, then-and-now, photoshoot pose loop → the real photo). Median shot
-4–6 s; real moments held 15 s–3 min; natural sound first; music earned (switched on by an on-screen action) and removed
+place chapters entered the same way, material spine, then-and-now, photoshoot pose loop → the real photo). Cut by **moments**, not durations
+(`moment-editing`): each shot runs from where its moment begins to where it resolves; natural sound first; music earned (switched on by an on-screen action) and removed
 (nightfall, tears, a confession); silence between chapters; physical transitions (object leaves frame → empty hold →
 next place); plant → pay off; end small, rhyming with the opening. Text = a person's caption voice, rarely labels.
 The techniques below serve that direction.

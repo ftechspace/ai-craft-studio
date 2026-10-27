@@ -20,7 +20,7 @@ important or nice scene is dropped).
 ## Overrides to the retention rules (for vlogs)
 | youtube-editing says | for vlogs do this instead |
 |---|---|
-| visual change every 3–6 s | median shot ≈ 4–6 s, but hold real moments 15 s – 3 min; rituals in a few held angles |
+| visual change every 3–6 s | **edit by moments** (`moment-editing`): each shot lasts as long as its moment — a glance, a whole conversation, a whole take; rituals in a few held angles |
 | cut the middle hard | **don't shorten** — keep every important and nice scene; cut only unusable or repetitive takes, and list what you cut |
 | no slow fade-ins; movement in frame 1 | either a short promise montage (≤ 25–30 s) or one held atmospheric frame with a quiet line — both fine |
 | pattern interrupts every 30–90 s (SFX, memes, callouts) | chapter changes, a new place, light changing, a silence, music switching on/off, a caption line |
@@ -31,6 +31,8 @@ important or nice scene is dropped).
 ## Workflow
 
 ### 1. Inventory the day
+Run the footage analyser first (`moment-editing` step 1 — word-timed transcript, sound events, shot cuts, motion,
+quality, candidate moments, contact sheets for every clip), then log moments in `edit/moments.md` (step 2).
 For every file (video and photos; skip `._*` macOS files): time from the file name, length, fps, audio, who is in it,
 where, what happens, talk vs ambient. Contact sheets for every clip (`contact.exe`), dense `range` sheets around
 anything promising, a rough transcript (Whisper) — mark every quoted line "check by ear". Note the **light across the

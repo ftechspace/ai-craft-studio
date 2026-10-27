@@ -21,7 +21,8 @@ never the principles.
 
 ## Pacing
 
-- **Visual change every 3-6 s on long-form, every 1-3 s on short-form.** A change can be a cut,
+- **Keep something changing — but cut by moments, not a timer** (`moment-editing`). Typical on long-form: a new
+  visual every few seconds in talking-head A-roll; short-form is faster. A change can be a cut,
   a punch-in (110-120% scale), B-roll, a graphic, a text pop, or a camera angle change.
 - **Punch-ins hide jump cuts.** Alternate between normal and punched-in framing across
   jump cuts in talking-head footage.

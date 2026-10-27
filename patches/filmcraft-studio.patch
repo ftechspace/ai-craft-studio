@@ -137,10 +137,10 @@ index 00000000..8b6214de
 +    json!({"y2": pct(0.02), "y50": pct(0.5), "y98": pct(0.98), "rgb": sum.map(|c| (c / n).round())})
 +}
 diff --git a/apps/filmcraft-cli/src/args.rs b/apps/filmcraft-cli/src/args.rs
-index ef418766..ec3e8e1e 100644
+index cc6e81cf..c957fde6 100644
 --- a/apps/filmcraft-cli/src/args.rs
 +++ b/apps/filmcraft-cli/src/args.rs
-@@ -20,6 +20,9 @@ const VALUED: &[&str] = &[
+@@ -23,6 +23,9 @@ const VALUED: &[&str] = &[
      "--data-dir",
      "--settings",
      "--gpu-rendering",
@@ -597,7 +597,7 @@ index 00000000..d8795385
 +    }
 +}
 diff --git a/apps/filmcraft-cli/src/main.rs b/apps/filmcraft-cli/src/main.rs
-index d49652b3..60e73651 100644
+index cfc04fc3..9a631fde 100644
 --- a/apps/filmcraft-cli/src/main.rs
 +++ b/apps/filmcraft-cli/src/main.rs
 @@ -31,6 +31,7 @@ macro_rules! out {
@@ -608,7 +608,7 @@ index d49652b3..60e73651 100644
  mod probe;
  
  use args::{Args, parse_value};
-@@ -95,6 +96,11 @@ SUBCOMMANDS
+@@ -97,6 +98,11 @@ SUBCOMMANDS
                                  media info as JSON, with MXF / Ogg / BWF details; with
                                  --image-sequence <media> is the first numbered still of a sequence
    bench-decode <media> [--frames N]
@@ -620,7 +620,7 @@ index d49652b3..60e73651 100644
    mcp                           MCP server on stdio (headless, or --bridge to the live app)
    help                          this text
    --version                     print the version
-@@ -478,6 +484,22 @@ async fn cli() {
+@@ -511,6 +517,22 @@ async fn cli() {
              check_offline(&a, &offline, &format!("render: {out}"));
              diag(format_args!("rendered {}x{} in {:.1} ms → {out}", img.w, img.h, dt.as_secs_f64() * 1000.0));
          }

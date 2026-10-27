@@ -15,6 +15,7 @@ LICENSE files inside each app):
   PhotoCraft   https://github.com/storytold/photocraft
   LightCraft   https://github.com/storytold/lightcraft
   DesignCraft  https://github.com/storytold/designcraft
+  FigCraft     https://github.com/storytold/figcraft
 
 "ArtCraft" and the app names and logos are trademarks of the ArtCraft Team. This project is independent and is not
 affiliated with or endorsed by the ArtCraft Team.
@@ -24,3 +25,6 @@ offered under FilmCraft's own licence terms.
 
 Optional voice engines downloaded by tools/tts (Kokoro, Piper, Chatterbox) and their models are third-party software
 under their own licences; they are not included in this repository.
+
+.claude/skills/yt-* come from https://github.com/Jakeschincariol/youtube-agent-skill (c) 2026 Jake Schincariol,
+MIT licence (copy in .claude/skills/yt-script/LICENSE).

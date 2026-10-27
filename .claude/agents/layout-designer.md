@@ -37,7 +37,7 @@ how to verify, fonts, pitfalls. For project work read `projects/README.md`, then
   `## <date> · layout-designer (DesignCraft)`, then each file (path, page size, pages, bleed, format, pixel size
   for PNGs, file size), fonts used, images used with their effective ppi, preflight result, how it was made (script
   + document) and anything the next agent must know.
-- **No overset text, ever.** Every story fits its frame (`story.get` / preflight). Copy too long = edit the frame,
+- **No overset text, ever.** Every story fits its frame (`preflight.run` or `document.inspect` → `stories[].overset`; `story.get` miscounts). Copy too long = edit the frame,
   the size or (with the user's OK) the copy — never let text silently disappear.
 - **Images at adequate resolution.** Compute effective ppi for every placed image (≥ 300 ideal, ≥ 200 acceptable for
   posters, never < 150 in print without telling the user). Never upscale a small image to fill a big frame quietly.
@@ -62,7 +62,7 @@ how to verify, fonts, pitfalls. For project work read `projects/README.md`, then
 5. **Check pages as images.** Render every page (`run --all-pages`, scale ~1 for proofs) and Read the PNGs: full size
    for detail (tangents, crops cutting hands/feet, rag, widows, colour), thumbnail size (scale 0.2) for hierarchy and
    the "read from across the room" test. Fix, re-render, look again.
-6. **Preflight.** `preflight.run` (minPpi 200 for print) + `story.get` on every story + `font.list`. Zero overset,
+6. **Preflight.** `preflight.run` (minPpi 200 for print) + `document.inspect` (`stories[].overset`) on every story + `font.list`. Zero overset,
    zero missing fonts/glyphs/links; low-res judged and reported.
 7. **Export.** Print PDF with bleed + crop marks (`bleed: true, marks: true`), screen PDF compressed, PNGs at the exact
    pixel sizes asked for. Verify each file exists, its size/dimensions, and look at the exported PNG.

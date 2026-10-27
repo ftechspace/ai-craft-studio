@@ -5,7 +5,7 @@
 # move them aside first so the link step can write the new ones; stale copies are deleted when free.
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p output/build-logs
-apps=${*:-"soundcraft effectcraft vectorcraft photocraft lightcraft designcraft filmcraft"}
+apps=${*:-"soundcraft effectcraft vectorcraft photocraft lightcraft designcraft figcraft filmcraft"}
 for a in $apps; do
   start=$(date +%s)
   rel="apps/$a/target/release"
@@ -13,7 +13,10 @@ for a in $apps; do
   for e in "$a" "$a-cli"; do [ -f "$rel/$e.exe" ] && mv "$rel/$e.exe" "$rel/$e.exe.old-$start" 2>/dev/null; done
   extra=""; [ "$a" = filmcraft ] && extra="--example contact"
   if (cd "apps/$a" && ~/.cargo/bin/cargo build --release -p "$a" -p "$a-cli" $extra) > "output/build-logs/$a.log" 2>&1
-  then echo "OK   $a ($(( $(date +%s) - start ))s)"
+  then
+    # cargo skips linking when nothing changed, so an exe moved aside is not re-created: put it back
+    for e in "$a" "$a-cli"; do [ ! -f "$rel/$e.exe" ] && [ -f "$rel/$e.exe.old-$start" ] && cp "$rel/$e.exe.old-$start" "$rel/$e.exe"; done
+    echo "OK   $a ($(( $(date +%s) - start ))s)"
   else
     echo "FAIL $a (see output/build-logs/$a.log)"
     for e in "$a" "$a-cli"; do [ ! -f "$rel/$e.exe" ] && [ -f "$rel/$e.exe.old-$start" ] && mv "$rel/$e.exe.old-$start" "$rel/$e.exe"; done

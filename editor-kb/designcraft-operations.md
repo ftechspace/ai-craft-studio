@@ -1,15 +1,20 @@
 # Driving DesignCraft — operations manual
 
 DesignCraft is an InDesign-class page-layout app (Rust). Every action is an engine **command**
-(`crates/engine/src/cmd/*`, 440+ of them) reachable from the headless CLI, the MCP server and the running app's
+(`crates/engine/src/cmd/*`, 542 of them on 0.13.0) reachable from the headless CLI, the MCP server and the running app's
 control channel. Paths are relative to `C:\CodeHouse\AIFilmEditor\`.
 
 Status of this manual: written from the source of `apps/designcraft/` (DesignCraft 0.5.0) and **verified on this
 machine on 2026-10-10** — headless scripts, `run` exports (PNG at scale 0.25/1/4.17, `--all-pages`, PDF screen/print/
 PDF-X-4), parent pages, guides, `frame.grid`, tables from text, PNG and SVG placement, preflight, `font.list`, the
 live app through `tools/craft.js` (commands, `script --connect`, `ui.render`, `ui.screenshot`, `app.export`,
-`file.saveAs`, `app.quit`) and the headless MCP handshake. Anything marked **UNVERIFIED** is read from the source
-but not yet run here — check it on first use and update this file.
+`file.saveAs`, `app.quit`) and the headless MCP handshake. **Re-verified headless 2026-10-27 on DesignCraft 0.13.0**:
+poster script (renders identically), `run` PNG with bleed / `--all-pages` / `--pdf-options`, `script --export`,
+print PDF (bleed + marks), screen PDF (`compressImages`), PDF/X-4 (+ `validate-pdf`), PDF/X-1a, parent pages,
+`frame.grid`, paragraph/character styles, CMYK swatch with tint, table from text, image in an ellipse frame,
+**Paste Into**, preflight, `font.list`, overset reporting, MCP `tools/list` and `export_png`. The live app /
+control channel was not re-run. Anything marked **UNVERIFIED** is read from the source but not yet run here — check
+it on first use and update this file.
 
 A worked, verified example (1080×1350 poster: background, full-width photo, headline, date line) is in
 **§ Recipes → Poster script**. Start from it.
@@ -80,6 +85,8 @@ PNG of a bleed document use the live app's `app.export`, or build the screen ver
 (recommended anyway). JPEG by `.jpg` extension (quality 90).
 
 **Discover:** `designcraft-cli commands <filter>` (JSON of every matching command), `designcraft-cli describe <id>`.
+**Check a PDF:** `designcraft-cli validate-pdf x.pdf` → `{standard, valid, issues, warnings}` (built-in PDF/X-4 checks,
+incl. unembedded fonts; new 2026-10-27, verified).
 
 ### 2. Control channel (the running app; the user watches)
 JSON lines on `127.0.0.1:<port>`: `{"id","method","params"}` → `{"id","ok":true,"result"}` or
@@ -109,13 +116,16 @@ work here). Tools: `list_commands`, `execute {command, params}`, `batch {command
 `get_story`, `set_story_text`, `new_document`, `open_document`, `save_document`, `place_image`,
 `render_page {page, scale?, bleed?, path?}` (returns the PNG as an image — the quickest way to look at a page),
 `export_png {path, page?, scale?}`, `screenshot`, `select_tool`, `pointer`, `key`, `type_text`, `menu_list`,
-`ui_inspect`, `ui_set`, `dialog_*`. `.mcp.json` entries:
+`ui_inspect`, `ui_set`, `ime`, `dialog_*`. Optional (new 2026-10-27): `mcp --automation-read-root DIR
+--automation-write-root DIR` (repeatable) confines every file the agent reads/writes to those folders; once roots are
+given, a kind left out grants no access. Without any roots the headless server is unconfined (verified:
+`export_png` to the scratchpad works with the plain `["mcp"]` entry). `.mcp.json` entries:
 ```json
 "designcraft":     {"command": "C:/CodeHouse/AIFilmEditor/apps/designcraft/target/release/designcraft-cli.exe", "args": ["mcp"]},
 "designcraft-app": {"command": "C:/CodeHouse/AIFilmEditor/apps/designcraft/target/release/designcraft-cli.exe", "args": ["mcp", "--connect", "9877"]}
 ```
 (The bridged server fails to start if the app isn't running; it reconnects once if the app restarts.)
-Headless `initialize` + `tools/list` verified (25 tools); the bridged variant is **UNVERIFIED** (same control methods
+Headless `initialize` + `tools/list` verified (25 tools; 26 on 0.13.0, 2026-10-27 — `ime` added); the bridged variant is **UNVERIFIED** (same control methods
 that were verified through craft.js).
 
 ## Core commands (ids and params)
@@ -137,7 +147,7 @@ that were verified through craft.js).
 ### Frames and objects
 | Command | Params | Notes |
 |---|---|---|
-| `frame.create` | `{rect, spread?, shape?: rectangle\|ellipse\|polygon, content?: text\|graphic\|unassigned, text?}` | text → `{id, story}`; others → `{id}`. A shape/graphic frame is left **selected**; a text frame made with `text` leaves a **caret at the end of its story** (see pitfall 4). Unassigned/shape frames get a **1 pt black stroke** (graphic frames: none) |
+| `frame.create` | `{rect, spread?, shape?: rectangle\|ellipse\|polygon, sides?, starInset?, content?: text\|graphic\|unassigned, text?, caret?, vertical?}` | text → `{id, story}`; others → `{id}`. A shape/graphic frame is left **selected**; a text frame made with `text` leaves a **caret at the end of its story** (see pitfall 4). **Changed 2026-10-27:** a frame with no `content` now has **no stroke**; only `content: "unassigned"` gets the 1 pt black stroke (verified) |
 | `frame.grid` | `{rect, cols, rows, gutter? (12), content?: graphic, spread?}` | → `{ids}` row-major; a grid of frames filling rect (storyboard panels). Cells take the rect's proportions — compute the rect so cells are 16:9 when they hold film frames (verified) |
 | `object.fill` | `{swatch, tint?: 0..1, ids?}` | swatch **name** (`"[Paper]"`, `"[Black]"`, `"[None]"`, or one you made) |
 | `object.color` | `{color: "#rrggbb" \| {c,m,y,k} \| [r,g,b], target?: fill\|stroke, ids?}` | unnamed colour; prefer swatches |
@@ -161,19 +171,28 @@ that were verified through craft.js).
 | `object.fit` | `{mode: fillProportionally\|fitProportionally\|fitContentToFrame\|centerContent\|fitFrameToContent, ids?}` | |
 | `object.fittingOptions` | `{autoFit?, fitting?, align?: 0..8 (4 = centre; 1 = top centre…), crop?: n \| [t,l,b,r], ids?}` | crop focus: `align` picks which part of the image the fill keeps |
 | `object.clippingPath`, `object.caption` | | captions from metadata (`{ppi}` variable) |
+| `edit.pasteInto` | `{id?}` | **Paste Into** (new 2026-10-27, verified): the copied/cut objects become the content of the selected frame (or `id`), clipped by its shape → `{id, items}` |
+
+**Image in a shape (verified 2026-10-27).** Simplest: `frame.create {"rect":…, "shape":"ellipse", "content":"graphic"}`
+then `file.place {"path":…, "frame": id}` — fills proportionally, clipped to the ellipse. **Paste Into** (any
+object(s) into any frame): select the object → `edit.copy` / `edit.cut` → `selection.set {"ids":[frame]}` →
+`edit.pasteInto {}`. The pasted content keeps its own size and is **centred** in the frame; `object.fit` on the
+frame does nothing to it — size it with `transform.set {"ids":[contentId], "x","y","width","height","ref":0}`, where
+`contentId` is the frame's `children[0].id` in `document.inspect` (a new id, not the original's). If you `edit.copy`
+a placed image, delete the original afterwards (`edit.clear {"ids":[…]}`).
 
 ### Text and styles
 | Command | Params | Notes |
 |---|---|---|
 | `story.setText` | `{story, text}` | `\n` = new paragraph; replaces the whole story |
-| `story.get` | `{story? \| frame?}` | text, frames, paragraphs, lines. Its `overset` field is **not reliable** (it said `0` for a fully overset headline — `lines: 0` was the tell); use `document.inspect` → `stories[].overset` (bool) or `preflight.run` |
+| `story.get` | `{story? \| frame?}` | text, frames, paragraphs, lines. Its `overset` field is **not reliable** (it said `0` for a fully overset headline — `lines: 0` was the tell; on 0.13.0 it is a character count, 6 where preflight said 5); use `document.inspect` → `stories[].overset` (bool) or `preflight.run` |
 | `text.select` | `{story, anchor, focus}` | **UTF-8 byte** offsets (· and — count 2–3 bytes) → format part of a story |
 | `type.char` | `{attrs: {fontFamily, fontStyle, size, leading: {"kind":"points","value":n} \| {"kind":"auto"}, tracking, kerning, hScale, vScale, baselineShift, fill: swatch name, fillTint, capitalization: allCaps\|smallCaps\|normal, underline, ligatures, otfFeatures, …}}` | acts on the selected text range, or the whole story of each **selected text frame** — so `selection.set {"ids":[frameId]}` first (verified). Attrs may also be passed bare (`{"size":40}`). `tracking` in 1/1000 em (150 on a 36 pt date looks right, verified) |
 | `type.para` | `{attrs: {align: left\|center\|right\|leftJustified\|fullyJustified…, leftIndent, firstLineIndent, spaceBefore, spaceAfter, dropCapLines, hyphenate, keepWithNext, balanceRagged, ruleAbove/ruleBelow, …}}` | same targeting |
 | `style.paragraph.create` | `{name, basedOn?, nextStyle?, para?: {…}, chars?: {…}}` | attrs as above |
 | `style.character.create` | `{name, basedOn?, chars?: {…}}` | |
 | `style.paragraph.apply` / `style.character.apply` | `{name, clearOverrides?}` | to the selection / selected frames |
-| `swatch.create` | `{name, color: "#rrggbb" \| {c,m,y,k} (0..100) \| [r,g,b], spot?}` | → `{name}`. Built-ins: `[None]`, `[Paper]`, `[Black]`, `[Registration]` |
+| `swatch.create` | `{name, color: "#rrggbb" \| {c,m,y,k} (0..100) \| [r,g,b], spot?}` or `{name, gradient: {kind?: linear\|radial, stops: [{location 0–100, swatch? \| color?, opacity?}]}}` | → `{name}`. Built-ins: `[None]`, `[Paper]`, `[Black]`, `[Registration]`. CMYK swatches avoid preflight `rgbColor` (verified). Gradient swatches new 2026-10-27 (UNVERIFIED) |
 | `font.list` | `{}` | fonts **used in the document**, with `missing` — run after typesetting |
 | `font.replace` | `{family, style?, toFamily, toStyle?}` | |
 | `type.createOutlines` | `{ids?}` | text → paths (last resort) |
@@ -181,7 +200,7 @@ that were verified through craft.js).
 ### Tables, guides, grids
 | Command | Params | Notes |
 |---|---|---|
-| `table.insert` | `{rows?, cols?, headerRows?, width?}` | at the text insertion point (needs a caret: `frame.create {…,"content":"text","caret":true}`) **UNVERIFIED** |
+| `table.insert` | `{rows? (4), cols? (4), headerRows?, footerRows?, width?}` | at the text insertion point (needs a caret: `frame.create {…,"content":"text","caret":true}`) **UNVERIFIED** |
 | `table.convertFromText` | `{columnSeparator?: tab\|comma}` | verified recipe: `frame.create {…,"text":"A\tB\n1\t2"}` → `edit.selectAll {}` → `table.convertFromText {"columnSeparator":"tab"}` → `{rows, table}`. Default look: equal columns across the frame, 1 pt black cell strokes, body font — restyle with `table.setCell` / `table.options` |
 | `table.select` / `table.setCell` / `table.setColumnWidth` / `table.setRowHeight` / `table.options` / `table.get` | see `describe` | `setCell {fill, insets, vj, text, stroke}` |
 | `table.placeGraphic` | `{path, fit?}` | image in a cell |
@@ -191,9 +210,9 @@ that were verified through craft.js).
 ### Checking and exporting
 | Command | Params | Notes |
 |---|---|---|
-| `document.inspect` (method, or MCP `inspect_document`) | | pages, items (ids, bounds), stories (**overset**), styles, swatches |
+| `document.inspect` (method, or MCP `inspect_document`) | | stories (**overset**), styles, swatches, parents, selection. **Changed 2026-10-27:** items and pages are per spread — `spreads[n].items[]` (`id, kind, bounds, fill, stroke, story?, children?` for frame contents) and `spreads[n].pages[]` — no top-level `items`/`pages` |
 | `preflight.run` | `{minPpi?: 150}` | → issues `[{severity, kind, message, item?, page?}]`, kinds: `overset`, `lowResolution`, `missingFont`, `missingGlyphs`, `missingLink`, `emptyText`, `rgbColor`, `unsupportedTypography` |
-| `file.exportPdf` | `{path, pages?, bleed?, marks?: bool \| {crop, bleed, pageInfo, weight, offset}, standard?: none\|x4\|a2b, compressImages?, spreads?, title?, author?, tagged?, flatten?}` | → `{path, bytes, pages, warnings}`. Real text with embedded font subsets; images embedded **at full resolution, lossless** unless `compressImages` |
+| `file.exportPdf` | `{path, pages?, bleed?, marks?: bool \| {crop, bleed, pageInfo, weight, offset}, standard?: none\|x4\|x1a\|a2b, compressImages?, spreads?, title?, author?, tagged?, flatten?, created?}` | → `{path, bytes, pages, warnings}`. Real text with embedded font subsets; images embedded **at full resolution, lossless** unless `compressImages` |
 | `app.export` (method) | `{path, page?, scale? (2)}` | one page PNG/JPEG, trim only |
 | `file.save` / `file.saveAs` / `file.saveACopy` | `{path}` | native `.designcraft` |
 | `file.exportIdml` | `{path}` | InDesign hand-off |
@@ -204,10 +223,12 @@ that were verified through craft.js).
 ### Print vs screen exports
 - **Print PDF (A3 poster):** document with `bleed: 8.504`; background art extends to the bleed edge; then
   `file.exportPdf {"path": "…/poster-A3.pdf", "bleed": true, "marks": true, "title": "…"}` (or
-  `run --in x.designcraft --pdf-options "{\"bleed\":true,\"marks\":true}" --export x.pdf`) — verified. Without
-  `bleed: true` the bleed is cropped off. `"standard": "x4"` writes PDF/X-4 (Generic CMYK output intent) — it
-  exports, but warns "an RGB image … under a CMYK output intent RGB needs an ICC profile": placed RGB photos are
-  not converted, so only use x4 when a printer demands it and tell them the images are RGB.
+  `run --in x.designcraft --pdf-options "{\"bleed\":true,\"marks\":true}" --export x.pdf`) — verified (again
+  2026-10-27). Without `bleed: true` the bleed is cropped off. `"standard": "x4"` writes PDF/X-4 (Generic CMYK
+  output intent). On 0.10 it warned about RGB images needing an ICC profile; **on 0.13.0 (2026-10-27) an RGB PNG
+  exported with no warnings and `validate-pdf` says `valid: true`** — still tell the printer the photos are RGB.
+  New: `"standard": "x1a"` (PDF/X-1a:2003 — flattened, CMYK/gray/spot only; verified it exports) for printers that
+  ask for X-1a.
 - **Screen PDF:** `{"path", "compressImages": true}` (no bleed, no marks) — verified 827 KB → 77 KB on the test
   poster.
 - **Screen PNG at exact pixels:** build the document in px-as-pt (1080×1350) and render at scale 1. For an A3
@@ -221,7 +242,7 @@ filling the full width of A3 (842 pt = 11.7 in) is **164 ppi** — acceptable fo
 reading distance; say so in the report and ask LightCraft for a larger export if it matters. Screen: the image
 needs ≥ the frame's pixel size × render scale (1080 px wide frame at scale 1 needs ≥ 1080 px of image across it).
 
-### Poster script (verified; 1080×1350, renders as expected)
+### Poster script (verified; 1080×1350, renders as expected — re-run 2026-10-27 on 0.13.0, same result)
 ```text
 file.new {"width": 1080, "height": 1350, "facingPages": false, "margins": 72, "title": "Poster"}
 swatch.create {"name": "ink", "color": "#1B1612"}
@@ -253,12 +274,14 @@ an empty band; preflight caught it. Always check.
 `file.new {"preset":"A3","facingPages":false,"pages":2,"bleed":8.504}` → every page uses parent `A-Parent` by default;
 `frame.create {"spread":{"kind":"parent","index":0}, …}` puts furniture (header, folio, footer line) on every page.
 Page *n* (0-based) is `"spread": n`. `layout.parents.new {"prefix":"B","name":"Board"}` → `{id, prefix}`; apply with
-`layout.pages.applyParent`. Page-number markers in folios: **UNVERIFIED** (see `describe type.insertSpecial` or
-the `variables.*` commands).
+`layout.pages.applyParent`. Parent items draw **under** page items — a full-bleed background on a page hides the
+parent's footer (put backgrounds on the parent too, or furniture on the page). Page-number markers in folios:
+**UNVERIFIED** — there is no `type.insertSpecial` (2026-10-27); try `variables.define` / `variables.insert` (types
+include `lastPageNumber`, `runningHeader`) or `describe text.insert`.
 
 ### Formatting part of a story
 `text.select {"story": S, "anchor": a, "focus": b}` (byte offsets; count UTF-8 bytes in Node:
-`Buffer.byteLength(prefix)`), then `type.char` / `style.paragraph.apply` **(UNVERIFIED)**. Simpler and verified:
+`Buffer.byteLength(prefix)`), then `type.char` / `style.character.apply {"name"}` (runs without error, 2026-10-27; look at the render). Simpler and verified:
 one frame per typographic role (headline, deck, date) — the usual way to build posters anyway.
 
 ## Verify (every page, every time)
@@ -294,7 +317,8 @@ from `handoff.md`; family and style names must match exactly (`fontStyle` "Bold"
 1. **`file.place` without `frame` goes into the selected empty/graphic frame** — including an already-placed image
    frame (replacing its picture). Always pass `frame` (place into a frame you made) or `edit.deselectAll` first.
 2. Coordinates are rects of corners in points, spread space; facing pages shift x. Use `facingPages: false`.
-3. Shapes made with `frame.create` (no content) have a 1 pt black stroke: `object.stroke {"swatch":"[None]"}`.
+3. Frames made with `content: "unassigned"` have a 1 pt black stroke: `object.stroke {"swatch":"[None]"}`.
+   (2026-10-27: frames with no `content` no longer get one; the `[None]` call in old scripts is harmless.)
 4. `type.char` / `type.para` / style apply act on the **selection**. `frame.create` with `text` leaves a *caret*
    (empty range) at the end of the story: `type.char` then only changes the typing format and **silently does
    nothing to the text** (returns `null`, no error) while `type.para` does apply. Always

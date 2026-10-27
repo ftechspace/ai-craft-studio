@@ -35,6 +35,9 @@ it, and want to share it?** Be honest and specific; politeness that ships medioc
 - HUD/REC/viewfinder brackets, light leaks, glitch, film burns used as default "cinematic"
 - Labels or captions that describe what the picture already shows; text on every scene
 - Uniform rhythm (all shots ≈ same length; every section same energy); music wall-to-wall at one density
+- **Cut to a length instead of by moments:** shots that end before the action resolves or the line/laugh finishes,
+  clips sampled evenly, "the first N seconds" of each clip, a good long take chopped for pace. For edits, read
+  `edit/cutlist.check.md` and `cutlist.transcript.md` (the checker output) as well as the frames.
 - Four-on-the-floor + saw arpeggio; a 4-chord loop with no motif or development
 - Tiny people in wide frames used as thumbnails/posters; photo-top/title-middle/three-pics-bottom posters
 - Effects with no motivation (flashes, whooshes, zooms on every cut)

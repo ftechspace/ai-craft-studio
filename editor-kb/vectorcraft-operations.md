@@ -1,9 +1,10 @@
 # Driving VectorCraft — operations manual
 
-VectorCraft 0.8.0 is an Illustrator-class vector app (Rust, `apps/vectorcraft/`). Every user-visible action is an
+VectorCraft 0.17.0 is an Illustrator-class vector app (Rust, `apps/vectorcraft/`). Every user-visible action is an
 engine **command** (`id` + JSON params); the CLI, the control channel and MCP all run the same commands.
 Paths are relative to `C:\CodeHouse\AIFilmEditor\`. Everything here was run on this machine on 2026-10-10 unless
-marked **UNVERIFIED** (taken from the app's docs/source only).
+marked **UNVERIFIED** (taken from the app's docs/source only). **Re-verified headless against 0.17.0 on 2026-10-27**
+(822 commands; every command id below still exists; what changed is marked "2026-10-27").
 
 ## Binaries and setup
 
@@ -12,7 +13,7 @@ marked **UNVERIFIED** (taken from the app's docs/source only).
 | Desktop app | `apps\vectorcraft\target\release\vectorcraft.exe [--control <port>] [files…]` |
 | Headless CLI / MCP server | `apps\vectorcraft\target\release\vectorcraft-cli.exe` (`help` lists subcommands and every readable/writable format) |
 | Control client (shared) | `node tools\craft.js vectorcraft …` (port **9874**) |
-| Command catalogue | `vectorcraft-cli commands` → JSON array of 701 `{id, label, menu, params, shortcut, enabled}`; `params` is a prose doc and **is the reference** — grep it before guessing a parameter |
+| Command catalogue | `vectorcraft-cli commands` → JSON array of 822 `{id, label, menu, params, shortcut, enabled}`; `params` is a prose doc and **is the reference** — grep it before guessing a parameter |
 | App docs | `apps\vectorcraft\docs\mcp.md` (commands by topic), `docs\control-protocol.md` (control methods, dialogs) |
 
 Rebuild after `git pull`: `sh tools/build-apps.sh vectorcraft` (≈8 min; log `output/build-logs/vectorcraft.log`).
@@ -49,15 +50,26 @@ module.exports = { run, rpc, done: () => p.stdin.end() };
 ```
 Usage: `const { id } = await run("shape.rectangle", {...}); await run("paint.setFill", { ids: [id], color: "#D08C5B" });`
 Put scripts in the scratchpad or `output/`, not in the project folder. `rpc("tools/call", {name: "render_preview",
-arguments: {max_side: 512}})` returns an inline PNG (base64) of artboard 1.
+arguments: {max_side: 512}})` returns an inline PNG (base64) of artboard 1. (Helper re-run unchanged 2026-10-27.)
+New 2026-10-27: `command_batch` steps can use earlier results (`"$1.id"`, as in `run` below; verified).
+`mcp --automation-read-root DIR --automation-write-root DIR` (each repeatable; implies `--headless`) confines file
+reads/writes to those folders; with neither flag nothing is confined (the helper above writes anywhere; verified).
 
 ### 2. Headless batch CLI (quick one-liners)
 ```sh
-vectorcraft-cli run [--in FILE] --cmd ID [--params JSON] … [--export FILE]… [--scale N]
+vectorcraft-cli run [--in FILE] [--cmd ID [--params JSON] | --commands FILE|-]… [--export FILE]… [--scale N]
 ```
 New document (or opens `--in`), runs each `--cmd` in order, `--export`s by extension, prints one JSON line per step,
-stops non-zero at the first failure. `--params` belongs to the `--cmd` before it. Ids can't flow between steps (rely on
-"new object = selection"). **`--export x.svg` keeps live `<text>`**; for delivery use
+stops non-zero at the first failure (naming the step). `--params` belongs to the `--cmd` before it.
+**Ids flow between steps (new, verified 2026-10-27):** a param string that is exactly `"$N"` / `"$N.path"` takes step
+N's result (0-based in run order; `--in`'s open isn't a step); `"$last…"` = the previous step: `"$1.id"`, `"$2.ids.0"`,
+`"$last.ids[0]"` (`"$$…"` = a literal `$`). `--commands steps.jsonl` reads steps from a file (JSON array, or one
+`{"command": id, "params": {…}}` per line; `-` = stdin) — no shell quoting, no 32k command-line limit:
+```sh
+vectorcraft-cli run --cmd file.new --params '{"width":600,"height":200}' \
+  --cmd text.create --params '{"x":10,"y":60,"text":"plain and bold words","size":30,"font":"Inter"}' \
+  --cmd text.setRangeStyle --params '{"id":"$1.id","start":10,"end":14,"style":"SemiBold"}' --export out.svg
+``` **`--export x.svg` keeps live `<text>`**; for delivery use
 `--cmd document.export --params '{"path":"…svg","outlineText":true}'` and for PNG options
 `--cmd document.export --params '{"path":"…png","scale":2,"background":"transparent"}'`.
 On Git Bash pass Windows paths (`$(pwd -W)`) inside JSON.
@@ -79,13 +91,15 @@ Before the first document exists, document commands fail with "no document open"
 | `document.inspect {depth?, childLimit?}` | layer tree: ids, kinds, names, bounds, fill/stroke, text; selection; history |
 | `ui.render {path, scale?}` | **first artboard only**, rendered without UI chrome (works with a locked screen) |
 | `ui.screenshot {path}` | the window as the user sees it (fails after ~8 s if the screen is locked/window covered) |
-| `app.save {path}` / `app.export {path, scale?, background?, format?}` | write through the app **in the background**: returns `{background: true, status}` at once; wait until `ui.inspect` → `background` is `[]` before using the file. `engine.execute document.export` is synchronous — prefer it |
+| `app.save {path}` / `app.export {path, scale?, background?, format?}` | write through the app **in the background**: returns `{background: true, status}` at once; wait until `ui.inspect` → `background` is `[]` before using the file, or (new 2026-10-27, UNVERIFIED) pass `wait: true` to get the written result. `engine.execute document.export` is synchronous — prefer it |
 | `app.open {path}` | open any readable file as a new tab |
 | `app.quit` | with unsaved changes opens a `saveChanges` dialog: `--ui ui.dialog.set '{"field":"discard","value":true}'` then `--ui ui.dialog.confirm` (or confirm alone to save) |
 | `ui.inspect` | documents (dirty), tool, open `dialog`, background jobs, perf |
 | `ui.menu.list`, `ui.tool.select`, `ui.pointer`, `ui.key`, `ui.dialog.*` | UI driving (UNVERIFIED here) |
 In the app, many menu commands open a dialog when called **without params** (`file.new`, `object.expand`,
-`file.export.svg`…): always pass params.
+`file.export`…): always pass params. (2026-10-27: `file.export.svg` no longer exists; `file.export` = `document.export`.)
+The app also takes `--automation-read-root/--automation-write-root` now (2026-10-27); `craft.js` passes none, so the
+live app stays unconfined as before.
 
 ### MCP config
 | Mode | Command | Notes |
@@ -133,7 +147,7 @@ into separate pieces (for colouring overlap areas; UNVERIFIED). Shape Builder: `
 | Command | Params |
 |---|---|
 | `paint.setFill` / `paint.setStroke` | `{ids?, color}`, `{none: true}`, `{swatch}`, `{gradient: {kind: linear\|radial, angle, stops: [{offset, color, opacity?}]}}` — result `null` on success |
-| `stroke.set` | `{weight, cap, join, align: center\|inside\|outside, dash?}` — acts on the **selection** (no `ids`): `select.set` first (verified) |
+| `stroke.set` | `{ids?, weight, cap, join, align: center\|inside\|outside, dash?, startArrow?, endArrow?, profile?}` → `{objects}`. **2026-10-27: now takes `ids`/`id`** (verified); without them it acts on the selection. It sets stroke *options* — give the object a stroke colour with `paint.setStroke` too |
 | `transparency.set` | `{ids, opacity 0..100, blend: "Multiply"…}` |
 | `swatch.new` | `{name, color, global: true}`; `swatch.edit {name, color}` recolours linked art (UNVERIFIED) |
 **Paint commands also set the default for the next object.** Verified: two ellipses drawn after a 12 pt coral stroke
@@ -142,8 +156,8 @@ came out with a 12 pt coral stroke. Set fill **and** stroke explicitly on every 
 ### Type
 | Command | Params |
 |---|---|
-| `text.fontList` | `{}` → `{families}`; `{family}` → `{styles}` (error if missing) |
-| `text.create` | `{x, y, text, size, font, style?, color?}` → `{id}`. **`y` is the baseline**, `x` the left edge. Area type: `area: {width, height}` |
+| `text.fontList` | `{}` → `{families}`; `{family}` → `{styles, axes}` (error if missing; `axes` = a variable font's axes) |
+| `text.create` | `{x, y, text, size, font, style?, color?, justify?: left\|center\|right}` → `{id, bounds}`. **`y` is the baseline**, `x` the left edge — or, new 2026-10-27, the centre with `justify: "center"` (verified). Area type: `area: {width, height}` |
 | `text.setStyle` | `{ids?, font?, style?, size?, leading?, tracking (1/1000 em), justify: left\|center\|right, fill?, features?}` |
 | `text.setRangeStyle` | `{id, start, end (byte offsets), kerning (1/1000 em), tracking?, fill?, size?, baselineShift?}` — per-pair kerning: runs on the first glyph of the pair (verified it applies and splits runs; judge the gap by eye) |
 | `text.setFormat` | `{ids, kerning: "auto"\|n, allCaps?, smallCaps?}` |
@@ -154,7 +168,7 @@ came out with a 12 pt coral stroke. Set fill **and** stroke explicitly on every 
 | Command | Params |
 |---|---|
 | `select.set {ids}` → `{count, ids}` / `select.all` / `select.none` | |
-| `object.align` | `{horizontal: left\|center\|right, vertical: top\|center\|bottom, to: selection\|artboard\|key, bounds: geometric\|preview}` (verified `to: "artboard"` on a one-artboard document; with several artboards check which one it uses) |
+| `object.align` | `{horizontal: left\|center\|right, vertical: top\|center\|bottom, to: selection\|artboard\|key, bounds: geometric\|preview, artboard?: index}` (verified). 2026-10-27: with several artboards pass `artboard` (0-based); default is the artboard under the selection's centre, else the first |
 | `object.distribute` / `object.distributeSpacing` | `{horizontal…}` / `{axis, spacing}` (UNVERIFIED) |
 | `object.group` → `{id}` / `object.ungroup` | verified |
 | `object.move {dx, dy, copy?}` / `object.rotate {angle (CCW), origin?}` / `object.scale {sx, sy?, strokes?}` / `object.reflect {axis}` | |
@@ -171,9 +185,9 @@ came out with a 12 pt coral stroke. Set fill **and** stroke explicitly on every 
 | `document.export` SVG | `{path, artboard?, outlineText: true, decimals?, styling?, embedFonts?}` | verified: `outlineText` leaves no `<text>`; colours as lowercase hex; coordinates relative to the chosen artboard; only that artboard's art |
 | `document.exportPdf` | `{path, range?: "1-3"}` | one page per artboard (verified it writes) |
 | `document.exportSelection` | `{path, format?, scale}` | selected objects cropped to bounds incl. stroke (verified) |
-| `document.exportForScreens` | `{folder, artboards?, formats: [{format, scale: "2x"\|"3840w", suffix}]}` | batch sizes — **UNVERIFIED** |
+| `document.exportForScreens` | `{folder, artboards?, formats: [{format, scale: "2x"\|"3840w", suffix}]}` | batch sizes — verified 2026-10-27: writes `<artboard name>@2x.png` / `<name>.svg` per artboard into `folder` → `{files}`; also `zip`, `name` patterns, `preset: "mobile"` |
 
-## Recipes (verified)
+## Recipes (verified; re-run on 0.17.0 2026-10-27: 3840×2160 RGBA PNG, outlined SVG with 0 `<text>`, `name` → SVG `id`, PDF, `info`)
 - Transparent 3840-px PNG of a 1920-pt artboard 0:
   `document.export {"path":"…/lockup-light-3840.png","artboard":0,"scale":2,"background":"transparent"}`
 - Delivery SVG: `document.export {"path":"…/lockup-light.svg","artboard":0,"outlineText":true}`
@@ -210,9 +224,9 @@ came out with a 12 pt coral stroke. Set fill **and** stroke explicitly on every 
 
 ## Gotchas
 1. Paint commands set the default for new art — set fill and stroke on every object.
-2. `stroke.set` has no `ids`: select first.
+2. `stroke.set` sets options only; it takes `ids` since 0.17 (2026-10-27) — older notes saying "select first" still work.
 3. `y` in `text.create` is the baseline.
-4. CLI `--export x.svg` keeps live text; use `document.export` with `outlineText: true`.
+4. CLI `--export x.svg` keeps live text (still true 2026-10-27); use `document.export` with `outlineText: true`.
 5. Exports overwrite silently — `ls` first, version the names.
 6. Fully opaque art exports as RGB PNG even with `background: "transparent"` (correct, just no alpha channel).
 7. In the GUI, `app.save`/`app.export` run in the background; `engine.execute document.save/export` don't.

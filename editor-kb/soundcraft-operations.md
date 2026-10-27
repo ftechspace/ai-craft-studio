@@ -3,6 +3,10 @@
 SoundCraft 0.4.0 (Pro Tools-class DAW, pure Rust). Everything here was run on this machine (Windows 11, release
 build) unless marked **UNVERIFIED** (read from source/docs, not exercised). Paths are relative to
 `C:\CodeHouse\AIFilmEditor\`. Use forward slashes in every JSON path (`C:/CodeHouse/...`).
+**Re-verified 2026-10-27 against SoundCraft 0.13.1** (482 commands; headless CLI only, no app): every command id and
+param in this manual still exists; the session skeleton, preset workaround, hit on a downbeat (onset 2.40 s), noise
+riser with automation, maximizer, `file.bounce_mix`, `file.bounce_stems`, reverse + fade, `--keep-going` all re-run
+and behave as written. Changes are marked *(0.13.1)*. Control-channel/`ui.*` methods were not re-run.
 
 ## Binaries and setup
 
@@ -12,13 +16,13 @@ build) unless marked **UNVERIFIED** (read from source/docs, not exercised). Path
 | Headless CLI | `apps/soundcraft/target/release/soundcraft-cli.exe` (`--help`) |
 | Launch app with control port | `node tools/craft.js soundcraft --start [session.scraft]` (port **9873**) |
 | Command to the app | `node tools/craft.js soundcraft <command id> '<json>'` · raw methods: `--ui <method> '<json>'` |
-| Level meter for WAVs | `node tools/wavlevels.js` (see Verifying). **Not installed yet** — if it's missing, ask the producer to add it |
+| Level meter for WAVs | `node tools/wavlevels.js` (see Verifying) — installed and verified 2026-10-27 |
 | Rebuild | `sh tools/build-apps.sh soundcraft` (log `output/build-logs/soundcraft.log`) |
 
 `soundcraft-cli` subcommands:
 ```
 info FILE                         audio file probe (rate, channels, frames, seconds) or .scraft text summary
-convert IN OUT [--bit-depth 16|24|32f] [--rate HZ] [--normalize]
+convert IN OUT [--bit-depth 16|24|32f] [--rate HZ] [--normalize] [--dither | --no-dither]   (0.13.1: dithers only when resolution drops)
 run [--in S.scraft | --demo] [--cmd ID[=JSON]]… [--bounce OUT] [--start T --end T] [--save S.scraft] [--inspect]
 script FILE [--in S | --demo] [--save S] [--bounce OUT] [--start T --end T] [--keep-going]   one `ID JSON` per line, # comments
 commands [FILTER]                 list ids (id, label, menu)
@@ -68,7 +72,8 @@ craft.js treats `session.*`/`ui.*`/`app.*` as engine commands unless you use `--
 ## MCP
 
 ```jsonc
-// .mcp.json (not yet added — producer's call)
+// .mcp.json: "soundcraft" (headless) is registered as of 2026-10-27; "soundcraft-app" is not.
+// (0.13.1) mcp also takes --automation-read-root DIR / --automation-write-root DIR to confine file access.
 "soundcraft":     {"command": "C:/CodeHouse/AIFilmEditor/apps/soundcraft/target/release/soundcraft-cli.exe", "args": ["mcp"]},
 "soundcraft-app": {"command": "C:/CodeHouse/AIFilmEditor/apps/soundcraft/target/release/soundcraft-cli.exe", "args": ["mcp", "--connect", "9873"]}
 ```
@@ -90,11 +95,11 @@ normalize}`, `parity`; bridge only: `screenshot {path}`, `ui_inspect`, `ui_set {
 - `session.format_time {"at": 1382400, "format": "bars_beats"}` → `"13| 1| 000"` (check your maths).
 - **Ids: one counter for everything** (tracks, clips, busses, markers…), starting at 1 in a new session, +1 per
   object created, in order. Example verified: track 1, its MIDI clip 2, bus 3, aux 4, audio track 5, master 6,
-  marker 7. `file.import_audio` makes a source *and* a clip (+ a track): source n, clip n+1… — read the printed
-  result. Tracks can always be named; clips need ids (`midi.note_add {"clip": 2}` — a string `"2"` is rejected).
+  marker 7. `file.import_audio` makes a source, a track and a clip: source n, track n+1, clip n+2 (verified 0.13.1:
+  `{source:1, track:2, clip:3}` in a new session) — read the printed result. Tracks can always be named; clips need ids (`midi.note_add {"clip": 2}` — a string `"2"` is rejected).
 - Master fader tracks ignore `name` and are called `Master 1` — address them by id.
 
-## Command reference (sound-designer subset; `soundcraft-cli describe ID` for any other of the ~460)
+## Command reference (sound-designer subset; `soundcraft-cli describe ID` for any other of the 482)
 
 **Session/files**
 - `session.new {name?, sample_rate?: 48000, bit_depth?: 24}` · `session.open {path}` → `{missing: […]}` ·
@@ -183,8 +188,12 @@ feedback, mix, mod_rate, mod_depth, lpf), `chorus`, `flanger`, `phaser`, `satura
 `dither`. CLAP/VST3 hosting exists (`engine.clap_plugins`, `engine.vst3_plugins`) — none installed here.
 Full param list: `soundcraft-cli run --cmd engine.plugins`.
 
-### Setting instrument parameters (verified workaround)
-No command sets an instrument's params directly. Use a track preset:
+### Setting instrument parameters
+*(0.13.1, verified — simplest)* Set them directly in the script:
+`mix.instrument {"track":"Bass","plugin":"subtractive_synth","params":{"osc1_wave":2,"cutoff":400,"level":-8}}` (resets
+the instrument, then applies `params`; values clamped into range, unknown ids are errors) and
+`mix.instrument_param {"track":"Bass","param":"amp_release","value":800}` for one param. Both persist in the `.scraft`.
+The track-preset route below still works and is the way to reuse a sound across sessions (verified again 0.13.1):
 1. `track.save_preset {"track":"Keys","path":".../keys.json"}` once (any instrument track).
 2. Edit the JSON: `instrument.params = {"osc1_wave":3,"osc2_wave":2,"cutoff":1800,"amp_attack":5,"amp_decay":900,
    "amp_sustain":20,"amp_release":600,"level":-6}` (unset params keep defaults). Keep `format:
@@ -234,7 +243,7 @@ Pitfall: the generator plays from its default level for ~60 ms at the start of e
 
 **Separate SFX files** (`hit.wav`, `riser.wav`, `whoosh.wav`): build each in its own small session (or bounce the
 whole score with only that track soloed: `mix.solo {"tracks":["Riser"],"value":true,"exclusive":true}`) with a
-`start`/`end` that includes the full tail (soloing to isolate one track is UNVERIFIED; stems are verified).
+`start`/`end` that includes the full tail (soloing with `exclusive:true` then bouncing verified 0.13.1; stems are verified).
 
 **Re-open in the app for the user**: `node tools/craft.js soundcraft --start "C:/…/audio/score/score.scraft"`
 (or `session.open {path}` if it's running; ask first if they have unsaved work), `ui.screenshot` to see it.
@@ -259,7 +268,7 @@ whole score with only that track soloed: `mix.solo {"tracks":["Riser"],"value":t
 - Maximizer ceiling ≠ true peak (see above).
 - `"length":"bars_beats:…"` is a position-from-zero, not a bar count.
 - `midi.note_add {"clip":"2"}` fails — ids are numbers. Note times are clip-relative ticks.
-- `mix.insert_params {"slot":"instrument"}` fails — use the preset workaround.
+- `mix.insert_params {"slot":"instrument"}` fails — use `mix.instrument {params}` / `mix.instrument_param` (or a preset).
 - A single automation point applies to the whole lane.
 - `app.quit` doesn't ask to save.
 - `track.new {"kind":"master","name":"Master"}` → "Master 1".

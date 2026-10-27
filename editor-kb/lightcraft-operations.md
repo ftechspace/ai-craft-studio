@@ -1,9 +1,13 @@
 # Driving LightCraft — operations manual
 
-LightCraft 0.5.0 (Lightroom-class photo library + raw developer, pure Rust). Paths are relative to
-`C:\CodeHouse\AIFilmEditor\`. Verified on this machine (2026-10-10): frame grab, headless `run`/`render`, persistent
-project-style library, preset/sync/mask/crop/export, MCP headless, GUI via `craft.js` with `--memory` (import, develop,
-histogram, screenshot, export, quit). Lines marked **UNVERIFIED** were read from the source/docs but not run.
+LightCraft 0.14.0 (Lightroom-class photo library + raw developer, pure Rust; 376 commands, 122 develop controls).
+Paths are relative to `C:\CodeHouse\AIFilmEditor\`. Verified on this machine (2026-10-10): frame grab, headless
+`run`/`render`, persistent project-style library, preset/sync/mask/crop/export, MCP headless, GUI via `craft.js` with
+`--memory` (import, develop, histogram, screenshot, export, quit). **Re-verified headless 2026-10-27 on 0.14.0**
+(throwaway library): import, select, develop.set/get, preset.create/list, rate/flag, develop.sync, radial mask +
+mask.adjust, crop.aspect/rotateAspect, export JPEG full size + 16-bit TIFF, persistence across runs, `render
+--settings/--preset/--set`, MCP `--compact` handshake + tool list (tool *calls* not re-run). GUI/control channel not
+re-run. Lines marked **UNVERIFIED** were read from the source/docs but not run.
 
 **Quick recipe (stills from footage, verified end to end):**
 ```sh
@@ -42,8 +46,9 @@ A project library folder holds `catalog.snap`, `catalog.log`, `catalog.lock`, `p
 
 - A library is open in one program at a time (`catalog.lock`). If the app has the project library open, headless
   `--library` on it fails ("already open in LightCraft (process N)") — use the app's control channel or MCP connect.
-- `--library` on the command line does **not** change the app's remembered library; the Settings panel and
-  `app.openLibrary` **do** (they'd make the user's next launch open the project) — don't use them.
+- `--library` on the command line does **not** change the app's remembered library; the Settings panel **does**
+  (it'd make the user's next launch open the project) — don't use it. (2026-10-27: `app.openLibrary` is no longer a
+  command.)
 - A non-memory app session saves its UI preferences (`%APPDATA%\LightCraft\ui.json`: view, panels) — harmless, but a
   reason to prefer `--memory` for experiments.
 - Import with `mode: "add"` (the default): photos are referenced in place, never copied/moved/renamed. Edits live in
@@ -81,7 +86,8 @@ LightCraft can't read video (no video import, no frame grab). Grab full-resoluti
 One process, a chain of commands, one JSON line per command (`{"command","ok","result"|"error","ms"}`; exit ≠ 0 on
 failure). A word without `=` starts the next command; `key=value` values are JSON when they parse; a `'{…}'`
 argument merges an object into the params. `--script file.jsonl` runs `{"command": id, "params": {…}}` lines (or
-`{"method": …}` control requests); `--keep-going` continues after errors.
+`{"method": …}` control requests); `--keep-going` continues after errors. `run --connect ADDR` drives the running
+app instead — its default is 127.0.0.1:**7980**, so pass `--connect 127.0.0.1:9872` for an app started by `craft.js`.
 
 ```sh
 L=apps/lightcraft/target/release/lightcraft-cli.exe
@@ -93,7 +99,9 @@ $L run --library projects/x/stills/library --script develop.jsonl
 ### 2. Single file: `lightcraft-cli render`
 `$L render in.png -o out.jpg --settings look.json --quality 92 --opt longEdge=1920` — develop one file with a settings
 JSON (`--settings`, partial develop JSON), sliders (`--set light.exposure=0.2`, repeatable), a preset (`--preset id`)
-and any `app.export` option (`--opt key=value`). No library at all — the fastest way to apply a saved look.
+and any `app.export` option (`--opt key=value`); `--size N` = long edge. No library at all — the fastest way to
+apply a saved look. Output format by extension: `.jpg .png .tif .webp .avif .jxl .psd .dng`. `--settings` also takes a
+`.lcpreset` (from `preset.export`) or an XMP preset (2026-10-27).
 Default output is full size (cropped), JPEG quality 92. **Only one `--settings` file counts** (a second one replaces the
 first): merge look + crop into one JSON. The settings JSON uses `develop.get`'s snake_case shape, e.g.
 `{"wb":{"mode":"custom","temp":6700,"tint":1},"light":{"exposure":0.05,"whites":15},"crop":{"geometry":{"rect":{"x0":0.3,"y0":0.2,"x1":0.4,"y1":0.3}}}}`.
@@ -120,20 +128,22 @@ the connection. Requests run on the UI thread between frames (60 s timeout).
 "lightcraft-app": {"command": "C:/CodeHouse/AIFilmEditor/apps/lightcraft/target/release/lightcraft-cli.exe",
                    "args": ["mcp", "--connect", "127.0.0.1:9872"]}
 ```
-Verified headless (`--compact`: 17 tools; `import` → `set_develop {values}` → `render_photo` returning a PNG image).
+Verified headless (`--compact`: 17 tools; `import` → `set_develop {values}` → `render_photo` returning a PNG image;
+2026-10-27 on 0.14.0: still 17 tools, server reports version 0.14.0).
 Connect mode (`lightcraft-app`) is UNVERIFIED but is a thin layer over the control channel, which is verified.
 Headless MCP without `--library` is in memory; pass the project library per session with `--library` only if it's
 fixed (it's a server argument, so a per-project library is easier through `run`). Helper tools: `import`,
 `query_photos`, `select_photos`, `list_controls`, `get_develop`, `set_develop {values|settings}`, `apply_preset`,
-`crop`, `render_photo` (returns the image), `export`, `command_run`, `command_batch`, `doc_inspect`; connect mode adds
-`screenshot`, `inspect_ui`, `click`, `press_key`, `pointer_gesture`. Without `--compact` every command is also a
-`cmd_<id>` tool (~280 tools).
+`crop {rect, angle, reset}`, `render_photo {id?, size?, format?, path?}` (returns the image), `render_preview`,
+`export`, `command_list`/`list_commands`, `command_run`/`run_command`, `command_batch`, `doc_inspect`; connect mode
+adds `screenshot`, `inspect_ui`, `click`, `press_key`, `pointer_gesture`. Without `--compact` every command is also a
+tool (393 tools on 0.14.0 — use `--compact`).
 
 ## Commands for the photo-grader (ids and params)
 
 Run on this machine: `library.import`, `library.info`, `catalog.query`, `library.select`, `library.filter`,
 `develop.set/merge/get`, `presets.list`, `preset.create`, `photo.rate`, `photo.flag`, `develop.sync`, `mask.add`
-(radial), `mask.adjust`, `crop.aspect`, `crop.rotateAspect`, `crop.set`, `app.export` (path and dir). The rest are
+(radial), `mask.adjust`, `crop.aspect`, `crop.rotateAspect`, `crop.set`, `app.export` (path and dir) — ids and params all still current on 0.14.0 (2026-10-27). The rest are
 taken from the command registry (`lightcraft-cli commands`) — **UNVERIFIED** until first use; check the result.
 
 Most commands act on the **active photo** or the **selection**; `ids` overrides. `library.select {ids, active}` first.
@@ -153,7 +163,7 @@ map ids by `fileName`, not by position. After an import the first new photo is a
 | `photo.rate` | `{rating: 0..5, ids?, advance?}` | |
 | `photo.flag` / `photo.pick` / `photo.reject` / `photo.unflag` | `{flag: pick\|reject\|none, ids?}` | |
 | `photo.label` | `{label: red\|yellow\|green\|blue\|purple\|none, ids?}` | |
-| `photo.analyze` | `{ids?, rejectBelow?: 0..100, pickBest?: bool}` | sharpness 0–100, clipping, look-alike groups (10 s), best of each |
+| `photo.analyze` | `{ids?, rejectBelow?: 0..100, pickBest?: bool, burstGap?: s (10), similarity?: 0..1 (0.93)}` | sharpness 0–100, clipping, look-alike groups, best of each |
 | `library.findSimilar` | `{id?, similarity?: 0.8}` | |
 | `stack.auto` | `{gap?: s}` | stack bursts |
 | `album.create` | `{name, addSelected?}` | collections; `album.addPhotos {id, ids}`; `albums.list` |
@@ -202,7 +212,7 @@ map ids by `fileName`, not by position. After an import the first new photo is a
 ### Presets, copy and sync
 | Command | Params | Notes |
 |---|---|---|
-| `presets.list` | `{}` | built-ins (`lc.warm-glow`, `lc.warm-film`, `lc.soft-pastel`, `lc.faded-matte`, `lc.muted-film`, `lc.clean-studio`, `lc.bright-airy`, `lc.soft-skin`, `lc.golden-glow`, `lc.cinematic`, `lc.moody`, `lc.bw-soft`, `lc.bw-high-contrast`, `lc.bw-selenium`, …) + user presets (`user.<n>.<slug>`) |
+| `presets.list` | `{}` | built-ins (`lc.warm-glow`, `lc.warm-film`, `lc.soft-pastel`, `lc.faded-matte`, `lc.muted-film`, `lc.clean-studio`, `lc.bright-airy`, `lc.soft-skin`, `lc.golden-glow`, `lc.cinematic`, `lc.moody`, `lc.bw-soft`, `lc.bw-high-contrast`, `lc.bw-selenium`; 41 on 0.14, new ones incl. `lc.golden-hour`, `lc.moody-portrait`, `lc.warm-table`, `lc.bw-sepia`, `lc.bleach-bypass`) + user presets (`user.<n>.<slug>`) |
 | `preset.apply` | `{id, amount?: 0..200, ids?}` | amount 100 = full |
 | `preset.create` | `{name, group?, groups?: [settingsGroup]}` | from the active photo — save the hero look |
 | `develop.copy` | `{groups?}` | default: all but crop, masks, remove |
@@ -215,10 +225,11 @@ Settings groups: `profile treatment whiteBalance light toneCurve color colorMixe
 detail optics geometry crop masks spots redEye lensBlur calibration`.
 
 ### Crop
-`crop.aspect {aspect: "16x9"|"4x5"|"1x1"|"original"|"free"|[w,h]}`, `crop.set {rect: [x0,y0,x1,y1] normalized, angle?}`,
+`crop.aspect {aspect: "16x9"|"4x5"|"1x1"|"original"|"free"|"current"|[w,h], orientation?: crop|given}`, `crop.set {rect: [x0,y0,x1,y1] normalized, angle?}`,
 `crop.straighten {angle}`, `crop.autoStraighten`, `crop.reset`. MCP: `crop {rect, angle}`.
 - **Aspect follows the photo's orientation:** `crop.aspect "4x5"` on a 1920×1080 frame gives a *landscape* 5:4
-  (1350×1080). Add `crop.rotateAspect` for portrait 4:5 → 864×1080 (verified). `rect` is normalized per axis
+  (1350×1080). Add `crop.rotateAspect` for portrait 4:5 → 864×1080 (verified). **New 2026-10-27:** an `[w,h]`
+  array is used as given, so `crop.aspect {"aspect":[4,5]}` is portrait 4:5 in one step (verified: 1200×900 → 720×900). `rect` is normalized per axis
   (x × width, y × height), so a portrait 4:5 from 16:9 is 0.45 wide: `[x0, 0, x0+0.45, 1]` — slide `x0` to frame the subject.
 - A 1080-high frame can't make a 1080×1350 Instagram portrait without upscaling: export with `height:1350,
   dontEnlarge:false` (1.25×) and say so, or deliver 864×1080.
@@ -235,13 +246,21 @@ Coordinates are normalized (0–1) image coordinates; radii relative to the long
 heuristics, not AI (`object`/`prompt` need the 3.4 GB SAM 3 model — don't download without the user's OK).
 
 ### Export (`app.export`; MCP `export`)
-`{path: out.jpg | dir, ids?, format?: jpeg|png|tiff|webp|avif|dng|original, longEdge|shortEdge|width+height|megapixels|percent,
-dontEnlarge? (true), quality?: 1..100, colorSpace?: srgb|displayP3|adobeRgb|proPhoto|rec2020, bitDepth?: 8|16,
+`{path: out.jpg | dir, ids?, format?: jpeg|png|tiff|psd|webp|avif|jxl|dng|original, longEdge|shortEdge|width+height|megapixels|percent,
+fit?: dimensions|widthHeight, dontEnlarge? (true), quality?: 1..100, colorSpace?: srgb|displayP3|adobeRgb|proPhoto|rec2020,
+bitDepth?: 8|10|16|32 (TIFF defaults to 16, PNG to 8), tiffCompression?: none|lzw|zip,
 ppi?, sharpen?: none|screen|matte|glossy, sharpenAmount?, metadata?: all|allExceptCamera|copyright|none,
 removeLocation?, naming?, conflict?: unique|overwrite|skip, limitKb?, watermark?}` → `{files}`.
 - No size param = **3000 px long edge**; `longEdge: 0` = full size. `width`+`height` fit inside the box.
 - `conflict` defaults to `unique` (a new name, never overwrite) — keep it.
 - Unknown keys are errors, not ignored. `export.presets` lists saved export presets.
+- Verified 2026-10-27: `{path:"a.jpg", longEdge:0, quality:92}` and `{path:"a.tif", format:"tiff", bitDepth:16}`.
+
+### New in 0.14 (2026-10-27, UNVERIFIED — check before relying on them)
+`photo.removeRegion` (content-aware remove), `geometry.upright`, `denoise.*` (AI Denoise; needs a model download —
+ask the user first), `develop.hdr {enabled, maxEv}` + export `hdr: true`, `merge.hdr` / `merge.panorama` /
+`merge.hdrBatch` (also `lightcraft-cli merge …`), `library.importLightroom {path: .lrcat}`, `activity.list` /
+`activity.cancel` (background tasks). `lightcraft-cli snapshot` renders the full app UI headless to PNG (no window).
 
 ## Verifying (look and measure)
 

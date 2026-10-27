@@ -1,5 +1,5 @@
 #!/bin/sh
-# One-time setup: fetch the seven ArtCraft apps (submodules), apply the FilmCraft patch, build everything.
+# One-time setup: fetch the ArtCraft apps (submodules), apply the FilmCraft patch, build everything.
 #   sh setup.sh            apps + build
 #   sh setup.sh --tts      also install the local voice engines (Kokoro, Piper; Chatterbox needs conda + an NVIDIA GPU)
 # Needs: git, Rust (rustup), Node.js. Windows: run in Git Bash.
@@ -19,7 +19,7 @@ else
   git -C apps/filmcraft apply --3way ../../patches/filmcraft-studio.patch
 fi
 
-echo "== Building all seven apps (release; ~45 min the first time)"
+echo "== Building all the apps (release; ~45 min the first time)"
 sh tools/build-apps.sh
 
 if [ "$1" = "--tts" ]; then
@@ -38,5 +38,14 @@ if [ "$1" = "--tts" ]; then
   done
   echo "   Chatterbox (voice cloning, NVIDIA GPU): see tools/tts/README.md"
 fi
+
+echo "== Footage analyser (Whisper word timestamps, ffmpeg, OpenCV) — the editors' eyes and ears"
+PY=${PYTHON:-python}
+$PY -m venv tools/footage/.venv
+F=tools/footage/.venv/Scripts/python.exe; [ -x "$F" ] || F=tools/footage/.venv/bin/python
+$F -m pip install -q --upgrade pip
+$F -m pip install -q faster-whisper imageio-ffmpeg opencv-python-headless numpy
+# NVIDIA GPU (optional, much faster transcription): CUDA libraries for faster-whisper
+$F -m pip install -q nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*" || echo "   (no CUDA libs: Whisper will run on the CPU)"
 
 echo "== Done. Open this folder in Claude Code; start with: \"New project <name>: footage is in <folder>, …\""

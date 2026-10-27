@@ -1,6 +1,10 @@
 # Driving FilmCraft — operations manual
 
 Everything here was verified against FilmCraft 0.4.0 on this machine unless marked **(verify on first use)**.
+**Re-verified 2026-10-27 against FilmCraft 0.8.0** (701 commands, headless only): every command, param and recipe below
+still works — `cut.js` headless with every plan feature, `contact.exe` (all four modes), Lumetri, text styles/animations,
+templates, exportFrame, exportMedia, jobs, renderInToOut. Changes are marked *(0.8.0)*. The live-app `ui.*` methods
+were not re-run (the user's window was open).
 Paths are relative to `C:\CodeHouse\AIFilmEditor\`.
 
 ## Binaries and setup
@@ -8,7 +12,7 @@ Paths are relative to `C:\CodeHouse\AIFilmEditor\`.
 | What | Path |
 |---|---|
 | Desktop app (release, fast) | `apps\filmcraft\target\release\filmcraft.exe --control 9876` (or double-click `start-filmcraft.cmd`) |
-| Headless CLI | `apps\filmcraft\target\release\filmcraft-cli.exe` (`help` lists subcommands) |
+| Headless CLI | `apps\filmcraft\target\release\filmcraft-cli.exe` (`help` lists subcommands; `commands [filter] --json`, `describe <id>`) |
 | Contact sheets | `apps\filmcraft\target\release\examples\contact.exe` |
 | Control client | `node tools\fc.js` |
 | Plan → live cut | `node tools\cut.js plan.json` |
@@ -122,10 +126,7 @@ Not covered by plans (use `fc.js`): letterbox shapes, split screens, other keyfr
 - **Scene detection** (when clips contain several shots): place clips on a sequence, then
   `clip.sceneEditDetection {"clips":[…],"applyCuts":false,"generateMarkers":true,"wait":true}` → `clips[{clip, mediaCuts:[ticks]}]`.
 - **One frame, full size:** `filmcraft-cli render --project p.fcproj --seconds S --out f.png --scale 0.5` (active
-  sequence) or `file.exportFrame {"path","target":"source","item","time"}` (source, full-res PNG ~2.4 MB). **`time` must be ticks** (s × 254016000000): `seconds` is silently ignored and you get frame 0. Simpler: `contact.exe <out.png> frame <file> <s>`.
-- **Screenshot the app** (what the user sees): `node tools\fc.js --ui ui.screenshot "{\"path\":\"C:/…/shot.png\"}"`.
-- **Scene detection** (when clips contain several shots): place clips on a sequence, then
-  `clip.sceneEditDetection {"clips":[…],"applyCuts":false,"generateMarkers":true,"wait":true}` → `clips[{clip, mediaCuts:[ticks]}]`.
+  sequence) or `file.exportFrame {"path","target":"source","item","time"}` (source, full-res PNG ~2.4 MB). **`time` must be ticks** (s × 254016000000): `seconds` is silently ignored and you get frame 0 (still true in 0.8.0). Simpler: `contact.exe <out.png> frame <file> <s>`.
 - **Screenshot the app** (what the user sees): `node tools\fc.js --ui ui.screenshot "{\"path\":\"C:/…/shot.png\"}"`.
 - The DJI `.LRF` files are 720p 29.97 previews of 59.94 clips: useless as proxies (FilmCraft requires equal fps and
   duration) but fine to skim.
@@ -147,7 +148,7 @@ Not covered by plans (use `fc.js`): letterbox shapes, split screens, other keyfr
 ### Editing
 | Command | Params | Notes |
 |---|---|---|
-| `timeline.place` | `{"item","track":"V1","time","sourceIn","duration","audio":false}` | → `clips:[video, audio…]`. `track:"A1"` places sound only. **Does not stop at the end of the media — clamp `sourceIn + duration` yourself.** |
+| `timeline.place` | `{"item","track":"V1","time","sourceIn","duration","audio":false}` | → `clips:[video, audio…]`. `track:"A1"` places sound only. *(0.8.0)* position also as `seconds`/`frame`; `items:[…]` places back to back. **Does not stop at the end of the media — clamp `sourceIn + duration` yourself.** |
 | `clip.speedDuration` | `{"clips":[id],"speed":50,"ripple":true}` | timeline length scales exactly (2× at 50%). Linked audio would follow — place picture with `audio:false` |
 | `playhead.set` | `{"time"}` or `{"seconds"}` | move it as you build so the user can follow |
 | `sequence.applyVideoTransition` | `{"clip","effect","frames","edge":"in"/"out"}` | effects: `cross_dissolve`, `film_dissolve`, `dip_to_black`, `dip_to_white`. Abutting neighbour → centred on the cut; lone edge → fade from/to black or transparent (on upper tracks) |
@@ -174,10 +175,26 @@ Not covered by plans (use `fc.js`): letterbox shapes, split screens, other keyfr
 | `input_lut`, `look_lut` | text: `builtin:look-warm-film` etc. or a `.cube` path | | |
 
 Also: `lumetri.setInputLut {"clip","path"}` for log conversion LUTs, `lumetri.applyMatch` (match to a reference frame),
-`lumetri.presets` / `lumetri.applyPreset`. Choice params reject names — pass the index.
+`lumetri.presets` / `lumetri.applyPreset {"name","clips"}` (folders Cinematic, Film Emulation, Monochrome, Technical).
+*(0.8.0)* Choice params now take the index **or** the name (`"look":"Golden Hour"` → 7); indices still work.
+Ranges in the table are the UI ranges: `effects.setParam` accepted `saturation 250` and `exposure 9` headless — stay
+inside them yourself.
 **Crash risk (2026-10-10, vlog-29th):** two `sequence.renderInToOut` jobs at once on long (30 min) sequences of HEVC
 + 4K60 footage crashed the app (fail-fast 0xc0000409 inside GPU HEVC decoding; the log showed 331 hardware-decoder
 sessions). Run **one** preview render at a time, only for the sequence on screen, and save before starting it.
+It happened again on 2026-10-26 during playback of a 35-min HEVC sequence (155 hardware-decoder sessions, no log
+error, no dump). **Mitigation in place:** Settings → Playback → Hardware decoding = **Off**
+(`%APPDATA%/FilmCraft/preferences.json` → `"playback": {"hardwareDecoding": "off"}`; a backup of the old file sits
+next to it). FilmCraft then uses its own decoders: more CPU, but it avoids the GPU path both crashes died in. Launch the
+app with `start-filmcraft.cmd` or `node tools/craft.js filmcraft --start` — both now append the app's error output
+(panic messages, `RUST_BACKTRACE=1` backtraces) to `output/filmcraft-errors.log`; read it first after any crash.
+**Real cause found (2026-10-26, from that log):** not decoding — the UI renderer. `egui_wgpu: Dropped frame with error:
+Validation` followed by a panic in egui-wgpu 0.36.2 `renderer.rs:984` "Failed to create staging buffer for index data"
+(index count 139 605) while drawing a long, busy timeline (35 min, ~90 clips + waveforms + captions) on the **Vulkan**
+backend. *(2026-10-27: FilmCraft 0.8.0 ships egui-wgpu 0.37.0, so this may be fixed — not re-tested; keep the workaround.)*
+**Workaround:** launch once with `--graphics dx12` (`node tools/craft.js filmcraft --start --graphics dx12`);
+FilmCraft remembers the mode. If it recurs on DX12, report it upstream (storytold/filmcraft) with the backtrace from
+`output/filmcraft-errors.log`.
 **Lumetri bug (found 2026-10-10, vlog-29th):** with Shadows > 0 **and** Blacks < 0 **and** Temperature or Tint ≠ 0 at
 the same time, near-black pixels turn into saturated red/green blocks (seen on a dark taxi dashboard). Set any one of
 them to 0 — keep **Shadows at 0** by default — and check dark interiors with `contact.exe program` after grading.
@@ -197,7 +214,8 @@ The "never raise global exposure" rule is about brightening dark skin; small exp
   Opacity: effect `opacity`, param `opacity` 0–100.
 - Keyframes: `effects.addKeyframe {"clip","effect":"motion","param":"scale","time":ticks}` turns animation on (it's a
   toggle — calling it on an existing key removes it); then `effects.setParam` with `"time"` sets values at times.
-  `setParam` without existing keys only sets the static value. Easing: `effects.setInterpolation {…,"mediaTime","interpolation":"easeIn|easeOut|bezier|…"}` (media ticks).
+  `setParam` without existing keys only sets the static value. *(0.8.0)* `effects.setParam {…,"time","keyframe":true}`
+  writes a key and turns animation on in one call (verified). Easing: `effects.setInterpolation {…,"mediaTime","interpolation":"easeIn|easeOut|bezier|…"}` (media ticks).
 - Text: `graphics.newText {"text","size","seconds"(= duration),"time"(ticks),"position":[x,y]?,"font"?,"fontStyle"?,"box":[w,h]?,"track"?}` → `{clip}`
   (`graphics.set` without `clip` acts on the text just created);
   style with `graphics.set {"clip","props":{"align":"center","tracking":300,"shadow":true,"fill_color":"#ffffff","font":"Inter","font_style":"Bold","opacity":100}}`.
@@ -223,6 +241,10 @@ The "never raise global exposure" rule is about brightening dark skin; small exp
 - `jobs.list` → `[{id,label,finished,progress,status}]`; `jobs.cancel {"job": id}` (key is `job`, not `id`).
   `node tools\fc.js --wait` blocks until no job runs.
 - After export, verify: `filmcraft-cli probe <file>` → duration, 1920×1080, fps, `AAC 2ch`.
+- *(0.8.0, verified)* Headless export from the shell: `filmcraft-cli --project p.fcproj export out.mp4 [--format h264]
+  [--start S --end S] [--quality 85] [--scale 0.5]` (active sequence; waits; exits 1 if media is offline);
+  `export --list-presets` lists presets. Test media without footage: `filmcraft-cli --demo export x.mp4 --start 0 --end 8`.
+  `file.exportMedia` also takes `range`/`startSeconds`/`endSeconds`, `crf`, `proresProfile`, `alpha`, `captionSidecar`.
 - Smooth playback: `sequence.renderInToOut {}` (a job; green render bar). Lower preview cost:
   `fc.js --ui ui.set '{"program":{"res":"Quarter"}}'`. `ui.inspect` → `playback.dropped/shown` shows if playback keeps up.
 - Fit the timeline to the window: `fc.js --ui ui.set '{"timeline":{"fit":true}}'`.
@@ -232,7 +254,7 @@ The "never raise global exposure" rule is about brightening dark skin; small exp
 2. Never slow audio: place picture with `audio:false`, add real-time sound separately.
 3. Speed must give whole source frames: at 50 % use an even number of timeline frames (cut.js handles it).
 4. 59.94 → 29.97 at 50 % is the only clean slow motion for 60p DJI footage on a 29.97 timeline; on 23.976 use 40 %.
-5. `effects.setParam` on `look` needs an integer.
+5. `effects.setParam` on `look`: integer index or (0.8.0) the look's name.
 6. An export or render job and live playback compete for CPU — tell the user playback may stutter meanwhile.
 7. Long `ui.inspect` output is large; extract the fields you need.
 9. Commands act on the **active sequence**. If the user clicks another sequence tab during a live build, creations

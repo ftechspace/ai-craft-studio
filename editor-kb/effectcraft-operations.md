@@ -3,6 +3,10 @@
 Everything here was verified against EffectCraft 0.7.0 on this machine (Windows 11, 10 Oct 2026) unless marked
 **UNVERIFIED**. Paths are relative to `C:\CodeHouse\AIFilmEditor\`. The test project from that verification is in the
 session scratchpad (`…/scratchpad/effectcraft-test/`), not kept in the repo.
+**Re-verified 2026-10-27 against EffectCraft 0.17.0** (735 commands, 307 effects; CLI only, no app window): every
+command id and param used below still exists; the 2-second test recipe (ease values identical: 16 % / 59 % / 99 %), SVG
+import → `shapesFromVector` (group order still reversed), masks, text preset, effect, expression, `script --eval`,
+render-frame, MP4, ProRes 4444 + alpha and PNG-sequence renders all re-run. Changes are marked *(0.17.0)*.
 
 ## Binaries and setup
 
@@ -37,8 +41,12 @@ $E render-frame motion/intro.ecproj --comp Intro --time 1.2 --out check.png [--m
 $E render motion/intro.ecproj --comp Intro --out motion/intro.mp4       # H.264 MP4 (format from the extension)
 $E commands --filter mask --empty                    # discover command ids + params doc
 $E exec layer.newNull '{}' --bridge 9875             # any command against the running app
-$E script build.jsx --save-as x.ecproj               # After Effects-style JavaScript (app.project, layers.addText…) UNVERIFIED here
+$E script build.jsx --save-as x.ecproj               # After Effects-style JavaScript (app.project, layers.addText…)
+$E script --eval 'var c=app.project.items.addComp("J",1920,1080,1,2,29.97); c.layers.addText("hi"); c.name' --json  # verified 0.17.0
+$E run --args-file steps.txt --empty --save-as x.ecproj   # (0.17.0) one argument per line: no command-line length limit
 ```
+*(0.17.0)* `exec <id> '<json>'` still works; `exec <id> --params '<json>'` is the documented form. `render --progress`
+prints progress lines on stderr; `render/render-frame --template T.ectemplate [--values V.json]` renders a template.
 - **`run`/`exec`/`info`/`props` open the DEMO project unless you pass a `.ecproj` or `--empty`.** `render` without a
   project renders the demo. Always pass the project path (or `--empty` to start fresh).
 - `run` takes `<id> '<json>'` pairs in order; one failing step aborts the whole call and **nothing is saved** (the
@@ -62,7 +70,8 @@ $E script build.jsx --save-as x.ecproj               # After Effects-style JavaS
   if the work matters; without force a modified project shows Save / Don't Save / Cancel).
 
 ### MCP
-`.mcp.json` entries (UNVERIFIED as registered servers; the same binary was verified speaking MCP over stdio in both modes):
+`.mcp.json` entries (2026-10-27: `effectcraft` headless with `--autosave` is registered and connects; `effectcraft-app`
+is not registered; the same binary was verified speaking MCP over stdio in both modes):
 ```json
 "effectcraft":     {"command": "C:/CodeHouse/AIFilmEditor/apps/effectcraft/target/release/effectcraft-cli.exe", "args": ["mcp", "--autosave"]},
 "effectcraft-app": {"command": "C:/CodeHouse/AIFilmEditor/apps/effectcraft/target/release/effectcraft-cli.exe", "args": ["mcp", "--bridge", "9875"]}
@@ -132,7 +141,8 @@ work after each edit; still `save_project {"path"}` at milestones. Bridge mode n
     — use the **snapped** key times (read them with `get … --json`, `keys[].time`). The reply is the count selected:
     check it equals the number you meant.
   - MCP `add_keyframe {layer, path, keys:[{time,value}], interpolation:"easyEase"}` does keys + ease in one call.
-- Expressions: `prop.setExpression {layer, path, expression}` (MCP `set_property {…, expression}`) UNVERIFIED here.
+- Expressions: `prop.setExpression {layer, path, expression}` (MCP `set_property {…, expression}`) — verified 0.17.0:
+  `"time*30"` on rotation → `get … --time 1` reports `evaluated: 30` (`value` stays the static 0).
 
 ### Masks (reveals and wipes)
 `layer.addMask {layer, shape:"rect", rect:[x,y,w,h]}` (layer space; for text, origin = baseline point) → `{mask}`.
@@ -150,8 +160,8 @@ Animate the path with `prop.addKey {layer, path:"masks/mask/path", time, value}`
 
 ### Effects
 `effect.apply {layers:["Title"], effect:"Gaussian Blur"}` → `{effects:[uid], paths:["effects/#1"]}`, then
-`prop.set {layer, path:"effects/#1/blurriness", value}`. `commands`/`list_effects` (MCP) list 306 effects. Layer
-styles (Drop Shadow…) exist. UNVERIFIED in this session beyond the docs.
+`prop.set {layer, path:"effects/#1/blurriness", value}`. `commands`/`list_effects` (MCP) list 307 effects (0.17.0). Verified: Gaussian Blur
+(`effect` id `ec.blur.gaussian`) renders. Layer styles (Drop Shadow…) exist, UNVERIFIED.
 
 ### Fonts (verified)
 `exec text.fonts '{}' --empty --json` → `{count, families:[{family, styles, origin}]}` (83 here). Bundled: Inter
@@ -174,7 +184,7 @@ A font installed after launch needs `text.fonts {"rescan":true}`. Use `font` + `
 ## Rendering (verified)
 | Deliverable | Command | Result here |
 |---|---|---|
-| H.264 MP4 (opaque) | `$E render p.ecproj --comp Intro --out motion/intro.mp4` | H.264 High, 4:2:0 8-bit, Rec.709 limited, 30000/1001, 15 Mbps default, no audio stream; 60 frames in 23 s (CPU) |
+| H.264 MP4 (opaque) | `$E render p.ecproj --comp Intro --out motion/intro.mp4` | H.264 High, 4:2:0 8-bit, Rec.709 limited, 30000/1001, 15 Mbps default, no audio stream; 60 frames in 23 s (CPU) — 3.2 s in 0.17.0 |
 | ProRes 4444 + alpha | `… --out x.mov --format prores --prores 4444 --channels rgba` | `has_alpha: true`, YUVA 4:4:4 12-bit, ~85 Mbps; alpha checked over green |
 | PNG sequence + alpha | `… --out seq/intro_[####].png --channels rgba [--start 0 --end 0.2]` | `intro_0000.png …` (numbering from 0) |
 | Other | `--format hevc\|av1\|webm\|gif\|jpeg\|tiff\|exr`, `--bitrate KBPS`, `--resolution half`, `--fps N`, `--audio off` | UNVERIFIED |
@@ -185,7 +195,8 @@ A font installed after launch needs `text.fonts {"rescan":true}`. Use `font` + `
   {"wait":true}` (or `wait:false` + `jobs.list`). The CLI `render` refuses `--bridge`.
 - **RGBA renders drop the comp background colour** (as in After Effects). For an opaque MP4 the background colour
   is used; if a piece must be opaque in an RGBA format, put a solid layer at the bottom.
-- CPU render ≈ 0.4 s/frame at 1080p with blur/text: a 216-frame end card ≈ 1.5 min. `--gpu` UNVERIFIED for render.
+- CPU render ≈ 0.4 s/frame at 1080p with blur/text: a 216-frame end card ≈ 1.5 min (0.7.0; 0.17.0 rendered a 60-frame
+  text + shape + SVG + blur comp in ≈3.3 s for MP4 and ProRes alike — re-measure on a real piece). `--gpu` UNVERIFIED for render.
 - MP4 has no audio track unless the comp has audio layers; the film-editor adds music in FilmCraft.
 
 ## Recipe: 2-second test (the verification run)

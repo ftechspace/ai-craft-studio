@@ -13,6 +13,7 @@ projects/<project-name>/
   graphics/        VectorCraft - logo, title lockups, icons, lower-third shapes (.vectorcraft + SVG + PNG)
   motion/          EffectCraft - animated intros, titles, end cards (project + MP4/MOV)
   audio/           SoundCraft  - score, sound design, mix stems (session + WAV 48 kHz 24-bit)
+  ui/              FigCraft    - UI screens, prototypes, social/thumbnail templates (.figcraft + PNG/PDF)
   print/           DesignCraft - posters, one-sheets, storyboard pages (document + PDF + PNG)
   edit/            FilmCraft   - the edit (.fcproj) and its cut plans
   exports/         finished deliverables, only after the user approves them
@@ -41,6 +42,7 @@ next to the old ones (`logo-v2.svg`, sequence "… v2"); nothing is overwritten.
 | motion-designer | EffectCraft | animated intros, logo reveals, motion titles, end cards |
 | sound-designer | SoundCraft | music beds, sound design, mixes |
 | layout-designer | DesignCraft | posters, one-sheets, printed storyboards, press kits |
+| ui-designer | FigCraft | thumbnail/social templates, carousels, channel art, app screens and clickable prototypes |
 
 Ops manuals (commands, CLI, pitfalls) live in `editor-kb/<app>-operations.md`.
 Launch any app with its control channel: `node tools/craft.js <app> --start` (ports: `node tools/craft.js ports`).

@@ -28,7 +28,8 @@ space and the ritual) are the show. Creativity lives in **structure, light, soun
 rare and must mean something.
 
 **Pacing**
-- Median shot ≈ 4–6 s (references: 3.6–6.2 s), almost nothing under 2 s after the opening; rituals held 8–54 s in a
+- **Edit by moments, not durations** (`moment-editing`): every shot lasts as long as its moment. (Descriptively the
+  references end up with a median shot of 3.6–6.2 s, almost nothing under 2 s after the opening, rituals held 8–54 s in a
   few angles; real emotional moments uncut for 15 s – 3 min.
 - Two speeds: brisk jump cuts only in talky/funny bits; patience everywhere else.
 - Optional fast "promise" montage at the open (≈ 1.3–2 s shots, ≤ 25–30 s), then calm; or open calm on one long held

@@ -19,7 +19,9 @@ each to use: a calm creator gets fewer effects, an energetic one gets more.
 ## B-roll sequences
 - **Shot progression:** establishing (where are we) → wide → medium → detail
   (hands, food, textures) → reaction (faces). This makes a place feel real.
-- **Shot length:** 1-3 s for energetic montages, 3-6 s for calm, beautiful moments.
+- **Shot length is an outcome, not a target:** each shot lasts as long as its moment (`moment-editing`). In a
+  deliberate montage the moments are short beats (a step, a splash, a glance); calm, beautiful moments are held until
+  they land.
 - **Cut on action:** cut during movement (a door opening, a step, a turn) so cuts flow.
 - **Cut to the beat** for music-driven sequences - on strong beats, not every beat.
 - **Motivated B-roll:** each cutaway shows what's being said or felt, never random.

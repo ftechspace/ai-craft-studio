@@ -1,7 +1,9 @@
 # Driving PhotoCraft — operations manual
 
-PhotoCraft is a Photoshop-class layered image editor (Rust; PSD/PSB read+write; 851 engine commands). Everything here
-was **verified against PhotoCraft 0.6.0 on this machine (2026-10-10)** unless marked **UNVERIFIED**. Paths are
+PhotoCraft is a Photoshop-class layered image editor (Rust; PSD/PSB read+write; 942 engine commands). Everything here
+was **verified against PhotoCraft 0.6.0 on this machine (2026-10-10)** unless marked **UNVERIFIED**, and
+**re-verified headless against 0.16.0 on 2026-10-27** (every command id below still exists; the §1 recipe, `convert`,
+`batch`, `info`, `type.fonts`, MCP and the `auth` handshake re-run; what changed is marked "2026-10-27"). Paths are
 relative to `C:\CodeHouse\AIFilmEditor\`.
 
 ## Binaries and setup
@@ -20,7 +22,7 @@ Three ways in, from most to least file access:
 | Way | File access | Use for |
 |---|---|---|
 | **CLI `run` / `convert` / `batch`** (trusted local) | any absolute path in any command | building deliverables, tests (≈1 s per build) |
-| **MCP** (`photocraft-cli mcp`, headless or `--bridge`) / **`serve`** | only `doc_open`/`doc_save` relative to `--automation-read-root` / `--automation-write-root` | an interactive session that keeps ids |
+| **MCP** (`photocraft-cli mcp`, headless or `--bridge`) / **`serve`** | only `doc_open`/`doc_save`/`doc_place` (headless) relative to `--automation-read-root` / `--automation-write-root` | an interactive session that keeps ids |
 | **Control channel** of the desktop app (`--control`) | only `app.open`/`app.save`/`ui.screenshot` relative to the app's roots | building live while the user watches; showing a finished PSD |
 
 In MCP, `serve` and the control channel, **every `file.*` command except `file.new`, `file.close*`, `file.fileInfo`,
@@ -40,13 +42,18 @@ $CLI info <file> [--compact]                  # JSON: width/height/depth, layer 
                                               #   effects, text {font,sizePt,text}, clipped), warnings (missing fonts)
 $CLI batch --actions steps.json --in <dir> --out <dir> [--format jpg] [--quality 90]   # refuses --out == --in
 ```
+2026-10-27: `run` and `convert` now also **refuse an output that is the input file** (exit 1; `--in-place` allows
+it), like `batch` (verified). New output flags on all three: `--format <ext>`, `--jpeg-format
+baseline|optimized|progressive`, `--tiff-layers`, `--tiff-compression`; `--quality` on WebP makes it lossy. New
+subcommand `droplet` runs a saved droplet.
 - `run` opens or creates **one** document, runs the commands in order (each `--params` belongs to the preceding
   `--cmd`), prints one JSON line per command (`{"command","result"}`), then writes `--out` (format from the
   extension: `.psd .psb .pcraft .png .jpg .tif .webp .exr …`). A failing `--cmd` stops with exit code 1.
 - Commands default to the **active layer**, and every creating command (place, shape, type, adjustment, fill layer,
   paste) makes its new layer active — so `place → style → transform`, `type → style → transform` chain without ids.
 - Layer ids are sequential per process: in a fresh `run --new`, the first layer ("Background" or the empty
-  "Layer 1" of a transparent document) is **id 2**; later ids are in the results. Delete the empty layer with
+  "Layer 1" of a transparent document) is **id 2** (still true 2026-10-27); later ids are in the results (they
+  skip numbers — read them, don't count). A `layer` param now also takes a layer **name** (2026-10-27). Delete the empty layer with
   `layer.delete {"layer":2}` after something else exists (a document must keep ≥ 1 layer).
 - **Use a step script** (no Windows quoting trouble, reproducible, easy v2):
   ```sh
@@ -55,13 +62,15 @@ $CLI batch --actions steps.json --in <dir> --out <dir> [--format jpg] [--quality
   ```
   Script = one `command.id {json}` per line, `#` comments (or a JSON array of `[id, params]`). Result:
   `{"ok":bool,"steps":n,"results":[{"command","result"|"error"}…]}`. **The script stops at the first failing step but
-  the CLI still exits 0 and still writes `--out`** — always check `"ok":true` (verified).
+  the CLI still exits 0 and still writes `--out`** — always check `"ok":true` (verified; re-verified 2026-10-27).
+  2026-10-27: an **unknown command id** is now caught before anything runs: exit 1, nothing written. Steps can also be
+  given inline: `file.scripts.browse {"steps":[["select.all",{}],…]}` or `{"script":"<text>"}` (verified).
 - PSD + PNG in one run: last script step `file.saveACopy {"path":"C:/…/x.psd"}`, plus `--out C:/…/x.png`.
   (`file.saveACopy` JPEG `quality` is Photoshop's 0–12; the CLI `--quality` is 1–100.) Or `convert x.psd x.png`
   afterwards — re-rendering the saved PSD gave a pixel-identical PNG (verified).
 - Phone-size check copy: `$CLI run x.png --cmd image.imageSize --params '{"width":320,"height":180}' --out x-320.png`.
 
-### Verified recipe: printed photo on a transparent canvas (border, soft shadow, tilt, caption)
+### Verified recipe: printed photo on a transparent canvas (border, soft shadow, tilt, caption) — re-run unchanged 2026-10-27
 ```text
 # art/print-01.steps.txt — run with --new '{"width":1280,"height":720,"background":"transparent"}'
 shape.create {"kind":"rect","rect":[420,170,440,330],"fill":"#F5EFE6","name":"Paper"}
@@ -103,6 +112,11 @@ Start it detached (e.g. Node `spawn(…, {detached:true, stdio:"ignore"}).unref(
   closes the connection. Then one JSON line per request `{"id","method","params"}` → `{"id","ok":true,"result"}` or
   `{"id","ok":false,"error":"…"}`. Limits: 60 s reply deadline, 30 s socket idle timeout, 1 MiB request, 8 MiB reply,
   16 connections.
+- 2026-10-27 (0.16.0): flags, token file and handshake **unchanged**. Re-verified headless: `photocraft-cli serve
+  --port 9881 --control-token-file %APPDATA%/Photocraft/control.token` speaks the same TCP `auth` protocol, and
+  `craft.js connect("photocraft")` (with `PHOTOCRAFT_PORT=9881`) authenticated and ran commands; a non-`auth` first
+  line got "authentication required" and the connection closed. (The desktop window itself wasn't launched.) A second
+  `auth` on the same connection now gets "already authenticated" and the connection keeps serving.
 - **`tools/craft.js` handles PhotoCraft (updated 2026-10-10, verified):** `--start` adds the token file
   (`%APPDATA%/Photocraft/control.token`) and the read/write roots (workspace / `projects/`); `connect()` sends `auth`
   first. So `node tools/craft.js photocraft --start` then `node tools/craft.js photocraft <command>` just work. The
@@ -144,12 +158,17 @@ Start it detached (e.g. Node `spawn(…, {detached:true, stdio:"ignore"}).unref(
   "args": ["mcp", "--bridge", "127.0.0.1:9871", "--control-token-file", "C:/Users/<you>/AppData/Roaming/Photocraft/control.token"]
 }
 ```
-Tools (both modes list all 22): `command_list {filter?, enabled_only?}`, `command_run {id, params?, wait?}`,
+**New 2026-10-27 (verified headless): `doc_place {path, scale?, center?, fit?}`** places a file from the read root as an
+embedded smart object → `{layer, scale, bounds, smartObject}` — the MCP way to place (the bridge refuses it; there
+use copy/paste as in §2). Also new: `doc_replace_smart_object {path, layer?}`, `doc_export_layers`,
+`doc_export_data_sets` / `doc_import_data_sets`. `serve` has the same as `doc.place` etc.
+Tools (both modes list all 26 as of 2026-10-27; 22 before): `command_list {filter?, enabled_only?}`, `command_run {id, params?, wait?}`,
 `command_batch {steps:[{id,params}], stop_on_error}`, `doc_new`, `doc_open {path}`, `doc_save {path?}`,
 `doc_export {path}`, `doc_inspect`, `doc_render_preview`/`render_preview {max_side?}` (headless: renders the document;
 **bridge: a screenshot of the app window**), `doc_select`/`doc_close` (headless only), `jobs_list`, `jobs_cancel`,
 `session_list`, and bridge-only `ui_inspect`, `ui_screenshot {max_side?}`, `ui_pointer`, `ui_menu_invoke`, `ui_set`,
-`control_call {method, params}`. Same file policy as §2 (`file.placeEmbedded` → tool error; use `doc_open` + copy/paste).
+`control_call {method, params}`. Same file policy as §2 (`file.placeEmbedded` → tool error, still 2026-10-27; headless use
+`doc_place`, bridge `doc_open` + copy/paste).
 The bridge needs `--control-token-file`/`--control-token` (or the env vars), else it refuses to start.
 
 ## 4. Commands for the photo-artist (ids + params)
@@ -179,7 +198,7 @@ active layer). Every edit is one undo step (`edit.undo`). Look up anything else 
 ### Transform (scale / rotate / position)
 | Command | Params |
 |---|---|
-| `edit.transform` | `{"matrix":[a,b,c,d,e,f]}` document-space affine applied on top (x' = a·x + c·y + e, y' = b·x + d·y + f) ✔, or `{"quad":[[x,y]×4]}` = where the content's bounding box corners go, clockwise from top-left ✔. Smart objects, type and shapes stay live (re-rendered, no loss) |
+| `edit.transform` | `{"matrix":[a,b,c,d,e,f]}` document-space affine applied on top (x' = a·x + c·y + e, y' = b·x + d·y + f) ✔, or `{"quad":[[x,y]×4]}` = where the content's bounding box corners go, clockwise from top-left ✔, or (new 2026-10-27, UNVERIFIED) relative `{"scaleX":%,"scaleY":%,"rotate":deg,"dx","dy"}` about the content's centre, as Free Transform. Smart objects, type and shapes stay live (re-rendered, no loss) |
 | `layer.translate` | `{"dx","dy"}` (integers) |
 | `edit.transform.flipHorizontal` / `.rotate90Cw` / … | `{}` |
 Rotation by θ **clockwise on screen** about (cx, cy): `[cos θ, sin θ, −sin θ, cos θ, cx − cx·cos θ + cy·sin θ,
@@ -221,10 +240,11 @@ Blend names are case/space-insensitive (`"Soft Light"` = `softLight`).
 | `type.create` ✔ | `{"x","y" (baseline),"text","align":"left\|center\|right" (center centres on x),"font":"Family","fontStyle":"Bold","weight","size":pt,"color","tracking":1/1000 em,"leading","caps":"all","box":[x,y,w,h]? (paragraph text),"name"}` → `{layer, bounds}` |
 | `type.setStyle` | `{"layer","range":[start,end]?, …character keys…, "align"}` (e.g. one word in the accent colour) |
 | `type.edit` | `{"layer","text"?,"move":[dx,dy]?,"transform":[a,b,c,d,e,f]?}` |
-| `type.fonts` ✔ | `{}` → `{families}`; `{"family":"Segoe UI"}` → faces with exact `style` names (Regular, Bold, Light, Semilight, …) |
+| `type.fonts` ✔ | `{}` → `{families}`; `{"family":"Segoe UI"}` → `{faces:[{family, style, weight, italic, postscriptName, axes}]}` — use the exact `style` (Regular, Semibold, Semilight, …) as `fontStyle` (re-verified 2026-10-27) |
 Fonts: bundled Inter (Regular/Medium/SemiBold) + JetBrains Mono, plus everything installed in `C:\Windows\Fonts` and
 `%LOCALAPPDATA%\Microsoft\Windows\Fonts`. A missing family falls back to Inter in the pixels; the CLI prints
-`warning: font '…' is not installed` and `info` lists it — check, never assume. PSDs keep live type.
+`warning: font '…' is not installed` and `info` lists it — check, never assume. Since 2026-10-27 the `type.create`
+result also carries `"warnings":[…]` (so MCP/script runs see it). PSDs keep live type.
 
 ### Adjustments (layers = non-destructive; `image.adjustments.*` = baked into the active pixel layer)
 `layer.newAdjustmentLayer.<kind>` ✔ (vibrance, curves) / `image.adjustments.<kind>`; edit later with
@@ -265,8 +285,8 @@ adjustment layers (verified by reopening). Overwrites existing files without ask
 4. Live: `ui.screenshot {"path":"…"}` (after `view.fitOnScreen`) shows what the user sees.
 
 ## 6. Pitfalls
-1. MCP / serve / control channel refuse path-taking commands — place and save through the CLI, or `app.open` +
-   copy/paste and `app.save`.
+1. MCP / serve / control channel refuse path-taking commands — place and save through the CLI, headless MCP
+   `doc_place`/`doc_save` (2026-10-27), or in the live app `app.open` + copy/paste and `app.save`.
 2. `file.scripts.browse` stops at a failing step, but the CLI exits 0 and still writes `--out`: check `"ok"`.
 3. Opacity: `layer.setProps` 0..1, layer styles 0..100. JPEG quality: `file.saveACopy` 0–12, CLI 1–100.
 4. `document.inspect` bounds are `[x,y,w,h]`; `file.placeEmbedded` returns `bounds` as `[x0,y0,x1,y1]`.
@@ -274,5 +294,6 @@ adjustment layers (verified by reopening). Overwrites existing files without ask
 6. Missing fonts silently fall back to Inter in the image — read the warnings.
 7. `doc_render_preview` in bridge mode is a window screenshot, not the document.
 8. `app.quit` doesn't ask about unsaved work. `app.save` to PNG retitles the open document.
-9. Everything overwrites silently — `ls` before every save; new versions get new names.
+9. Everything overwrites silently — `ls` before every save; new versions get new names. (Exception since
+   2026-10-27: `run`/`convert`/`batch` refuse to overwrite their own input without `--in-place`.)
 10. A layer-style `stroke` outside has rounded corners; use a shape layer for crisp paper borders.

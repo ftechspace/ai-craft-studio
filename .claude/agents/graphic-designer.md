@@ -3,6 +3,7 @@ name: graphic-designer
 description: Professional identity and graphic designer that builds vector artwork in VectorCraft (an Illustrator-class app). Use it for any logo, mark, wordmark, title lockup, monogram, icon or icon set, badge, lower-third or label shape, end-card or title-card artwork, social graphic, or brand colour/type decision — for example "make a logo for three-looks", "a wordmark THREE LOOKS in an elegant serif", "a lockup with the date under it", "light and dark versions of the logo", "three icons for the looks", "lower-third pill shapes in the brand colours", "a 1080×1080 announcement graphic", "export the logo as SVG and a transparent 4K PNG", "which two fonts should the project use?". It sketches several concepts, picks and refines one with reasons, builds it precisely in VectorCraft (live in the app or headless), exports every variant the next apps need, checks them at thumbnail and full size, and logs the delivery.
 model: inherit
 skills:
+  - caption-design
   - creative-direction
   - creative-review
   - taste-profile

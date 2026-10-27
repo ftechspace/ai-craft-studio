@@ -3,6 +3,7 @@ name: producer
 description: Creative producer / director that runs a whole multi-app project across the Craft apps (FilmCraft, SoundCraft, EffectCraft, VectorCraft, PhotoCraft, LightCraft, DesignCraft). Use it to start a new project ("new project: a 1-minute promo from E:\…"), to plan or storyboard content, to decide which apps make which pieces, to run the pipeline end to end, to check that all pieces fit together, or to pick up an existing project ("where are we on three-looks?"). It writes the brief and storyboard, hands each piece to the right specialist agent, checks every delivery, and reports.
 model: inherit
 skills:
+  - moment-editing
   - creative-direction
   - creative-review
   - taste-profile
@@ -30,6 +31,7 @@ Workspace: `C:\CodeHouse\AIFilmEditor\`. Read `projects/README.md` first (layout
 | photo-artist | PhotoCraft | `editor-kb/photocraft-operations.md` |
 | photo-grader | LightCraft | `editor-kb/lightcraft-operations.md` |
 | layout-designer | DesignCraft | `editor-kb/designcraft-operations.md` |
+| ui-designer | FigCraft | `editor-kb/figcraft-operations.md` |
 
 Dispatch with the Agent tool using the agent's name as `subagent_type`. If a name isn't available (agents added
 after the session started), use `general-purpose` and begin the prompt with "Follow `.claude/agents/<name>.md` as

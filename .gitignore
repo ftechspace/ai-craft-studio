@@ -28,6 +28,8 @@
 /tools/tts/.venv-*/
 /tools/tts/models/
 /tools/tts/samples/
+/tools/footage/.venv/
+/tools/footage/models/
 
 # App leftovers (the apps themselves are submodules; their build output stays inside them)
 *.exe.old-*

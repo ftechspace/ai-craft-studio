@@ -10,7 +10,7 @@ carry craft and taste, tested operating manuals for every app, small tools, and 
 output become the next app's input.
 
 > **Credit where it's due.** All the creative software here — the editor, the DAW, the compositor, the vector,
-> photo, raw and layout apps — is the work of the **ArtCraft Team**. This project doesn't contain or fork their apps;
+> photo, raw, layout and interface-design apps — is the work of the **ArtCraft Team**. This project doesn't contain or fork their apps;
 > it pulls them in as git submodules and builds a workflow around them. See [Acknowledgements](#acknowledgements).
 
 ---
@@ -37,6 +37,7 @@ output become the next app's input.
                       graphic-designer  → VectorCraft      motion-designer → EffectCraft  film-editor / content-editor
                       photo-grader      → LightCraft       photo-artist    → PhotoCraft   → FilmCraft (the edit)
                       sound-designer    → SoundCraft       layout-designer → DesignCraft
+                                                         ui-designer     → FigCraft
 ```
 
 1. **Projects are folders** (`projects/<name>/`): `brief.md`, `storyboard.md`, a `handoff.md` log every agent appends
@@ -69,6 +70,7 @@ output become the next app's input.
 | `photo-grader` | LightCraft | culling, developing and grading stills; frame grabs from video |
 | `photo-artist` | PhotoCraft | thumbnails, composites, retouching, covers |
 | `layout-designer` | DesignCraft | posters, save-the-dates, printed storyboards, press kits |
+| `ui-designer` | FigCraft | thumbnail and social templates, carousels, channel art, app screens and clickable prototypes |
 | `creative-critic` | all | reviews every piece before you see it — PASS or REVISE with concrete notes |
 
 ## Setup
@@ -80,7 +82,7 @@ output become the next app's input.
 ```sh
 git clone --recursive https://github.com/ftechspace/CWWAC.git
 cd CWWAC
-sh setup.sh            # fetches the 7 apps, applies the FilmCraft patch, builds everything (~45 min)
+sh setup.sh            # fetches the 8 apps, applies the FilmCraft patch, builds everything (~45 min)
 sh setup.sh --tts      # optional: also installs the local voice engines
 ```
 
@@ -150,6 +152,7 @@ every one of your apps exposes its features as commands that an agent can drive:
 | **PhotoCraft** | [storytold/photocraft](https://github.com/storytold/photocraft) | image editing and compositing |
 | **LightCraft** | [storytold/lightcraft](https://github.com/storytold/lightcraft) | photo library and raw developer |
 | **DesignCraft** | [storytold/designcraft](https://github.com/storytold/designcraft) | page layout and publishing |
+| **FigCraft** | [storytold/figcraft](https://github.com/storytold/figcraft) | interface design and prototyping |
 
 Find out more at [getartcraft.com](https://getartcraft.com/). The apps keep their own licences (see each app's
 LICENSE files). "ArtCraft" and the app names are trademarks of the ArtCraft Team; **this project is independent and

@@ -7,8 +7,14 @@ skills:
   - youtube-editing
   - vlog-editing
   - vlog-techniques
+  - moment-editing
+  - caption-design
   - creative-direction
   - taste-profile
+  - yt-edit
+  - yt-shorts
+  - yt-chapters
+  - yt-retention
 ---
 
 You are a senior content editor for YouTube and short-form platforms. You edit for

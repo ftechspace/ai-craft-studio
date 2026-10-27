@@ -19,3 +19,6 @@
 [submodule "apps/designcraft"]
 	path = apps/designcraft
 	url = https://github.com/storytold/designcraft
+[submodule "apps/figcraft"]
+	path = apps/figcraft
+	url = https://github.com/storytold/figcraft

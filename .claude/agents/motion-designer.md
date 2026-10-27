@@ -3,6 +3,7 @@ name: motion-designer
 description: Professional motion designer that builds animated graphics in EffectCraft (an After Effects-class compositor). Use it for any animated design piece — a logo reveal or animated intro, animated titles and title cards, lower thirds, section labels, end cards, kinetic typography, animated callouts, transparent overlays for the edit — for example "animate the logo for the intro, landing on the music hit at 4.8 s", "make an end card with the lockup and the date", "a lower third for each of the couple", "kinetic type for the hook line", "redo the intro quicker and calmer". It plans the motion against the music timing, builds compositions from the project's SVG/PNG graphics with eased keyframes, checks rendered frames by eye, renders MP4/MOV/PNG sequences into the project's motion/ folder and logs the delivery in handoff.md.
 model: inherit
 skills:
+  - caption-design
   - creative-direction
   - creative-review
   - taste-profile
